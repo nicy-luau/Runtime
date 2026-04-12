@@ -1,0 +1,17 @@
+[package]
+name = "nicyruntime"
+version = "1.0.0-alpha"
+edition = "2024"
+
+[lib]
+name = "nicyruntime"
+crate-type = ["cdylib"]
+
+[dependencies]
+libloading = "0.9"
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+mlua-sys = { version = "0.10.0", default-features = false, features = ["luau", "luau-codegen", "luau-vector4", "vendored"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+mlua-sys = { version = "0.10.0", default-features = false, features = ["luau", "vendored"] }
