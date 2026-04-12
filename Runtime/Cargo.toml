@@ -10,8 +10,14 @@ crate-type = ["cdylib"]
 [dependencies]
 libloading = "0.9"
 
-[target.'cfg(not(target_os = "android"))'.dependencies]
+# x64 e ARM: vector4 + codegen
+[target.'cfg(all(not(target_os = "android"), not(target_arch = "x86")))'.dependencies]
 mlua-sys = { version = "0.10.0", default-features = false, features = ["luau", "luau-codegen", "luau-vector4", "vendored"] }
 
+# x86 32-bit: sem vector4 (TValue size mismatch no ABI Linux)
+[target.'cfg(all(not(target_os = "android"), target_arch = "x86"))'.dependencies]
+mlua-sys = { version = "0.10.0", default-features = false, features = ["luau", "luau-codegen", "vendored"] }
+
+# Android: sem codegen, sem vector4 (estabilidade)
 [target.'cfg(target_os = "android")'.dependencies]
 mlua-sys = { version = "0.10.0", default-features = false, features = ["luau", "vendored"] }
