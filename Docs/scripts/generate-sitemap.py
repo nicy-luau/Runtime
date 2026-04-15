@@ -8,7 +8,11 @@ import xml.etree.ElementTree as ET
 
 SITE_ROOT = "https://nicy-luau.github.io/Runtime/"
 XMLNS = "http://www.sitemaps.org/schemas/sitemap/0.9"
-EXCLUDED_FILES = {"print.html", "404.html"}
+EXCLUDED_FILES = {
+    "print.html",
+    "404.html",
+    "google6c70c1263d4aaf47.html",
+}
 
 
 def iter_html_files(book_dir: Path) -> list[Path]:
