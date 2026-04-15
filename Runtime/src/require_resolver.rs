@@ -22,7 +22,7 @@ const NICY_CODEGEN_CREATED_KEY: &[u8] = b"nicy_codegen_created\0";
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 struct FileFingerprint {
-    modified_ns: u128,
+    modified_ns: u64,
     size: u64,
 }
 
@@ -35,7 +35,7 @@ impl FileFingerprint {
             .modified()
             .ok()
             .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-            .map(|d| d.as_nanos())
+            .map(|d| d.as_nanos() as u64)
             .unwrap_or(0);
         Ok(Self { modified_ns, size })
     }
@@ -185,17 +185,10 @@ fn resolve_loadlib_base(
             return Ok(current_module.to_path_buf());
         }
         let rest = rest.strip_prefix('/').unwrap_or(rest);
-        let root = if is_init_module(current_module) {
-            current_module
-                .parent()
-                .unwrap_or(rt.entry_dir.as_path())
-                .to_path_buf()
-        } else {
-            current_module
-                .parent()
-                .unwrap_or(rt.entry_dir.as_path())
-                .to_path_buf()
-        };
+        let root = current_module
+            .parent()
+            .unwrap_or(rt.entry_dir.as_path())
+            .to_path_buf();
         return Ok(root.join(rest));
     }
     if spec.starts_with("./") || spec.starts_with("../") {
@@ -212,212 +205,54 @@ fn resolve_loadlib_base(
     Ok(rt.entry_dir.join(p))
 }
 
-/// Parse a JSON string value starting at the given index in the char slice.
-/// Returns (unescaped_string, chars_consumed_including_quotes).
-fn parse_json_string(chars: &[char], start: usize) -> Option<(String, usize)> {
-    let quote = *chars.get(start)?;
-    if quote != '"' && quote != '\'' {
-        return None;
-    }
-    let mut result = String::new();
-    let mut i = start + 1;
-    while i < chars.len() {
-        let ch = chars[i];
-        if ch == quote {
-            return Some((result, i - start + 1));
-        }
-        if ch == '\\' {
-            i += 1;
-            if i >= chars.len() {
-                return None;
-            }
-            match chars[i] {
-                '"' => result.push('"'),
-                '\'' => result.push('\''),
-                '\\' => result.push('\\'),
-                '/' => result.push('/'),
-                'n' => result.push('\n'),
-                't' => result.push('\t'),
-                'r' => result.push('\r'),
-                'b' => result.push('\u{0008}'),
-                'f' => result.push('\u{000C}'),
-                'u' => {
-                    if i + 4 < chars.len() {
-                        let hex: String = chars[i + 1..i + 5].iter().collect();
-                        if let Ok(code) = u32::from_str_radix(&hex, 16) {
-                            if let Some(c) = char::from_u32(code) {
-                                result.push(c);
-                            }
-                        }
-                        i += 4;
-                    }
-                }
-                _ => {
-                    result.push('\\');
-                    result.push(chars[i]);
-                }
-            }
-        } else {
-            result.push(ch);
-        }
-        i += 1;
-    }
-    None
-}
-
-/// Skip any JSON value starting at `start`. Returns chars consumed.
-fn skip_json_value(chars: &[char], start: usize) -> Option<usize> {
-    let mut i = start;
-    match chars.get(i)? {
-        '"' | '\'' => {
-            let (_, consumed) = parse_json_string(chars, i)?;
-            Some(consumed)
-        }
-        '[' => {
-            let mut depth = 1;
-            i += 1;
-            while i < chars.len() && depth > 0 {
-                match chars[i] {
-                    '"' | '\'' => {
-                        let (_, c) = parse_json_string(chars, i)?;
-                        i += c;
-                        continue;
-                    }
-                    '[' => depth += 1,
-                    ']' => depth -= 1,
-                    _ => {}
-                }
-                i += 1;
-            }
-            Some(i - start)
-        }
-        '{' => {
-            let mut depth = 1;
-            i += 1;
-            while i < chars.len() && depth > 0 {
-                match chars[i] {
-                    '"' | '\'' => {
-                        let (_, c) = parse_json_string(chars, i)?;
-                        i += c;
-                        continue;
-                    }
-                    '{' => depth += 1,
-                    '}' => depth -= 1,
-                    _ => {}
-                }
-                i += 1;
-            }
-            Some(i - start)
-        }
-        c if c.is_ascii_digit()
-            || *c == '-'
-            || *c == '+'
-            || *c == '.'
-            || *c == 't'
-            || *c == 'f'
-            || *c == 'n' =>
-        {
-            let si = i;
-            while i < chars.len() {
-                match chars[i] {
-                    ',' | '}' | ']' | '\n' | '\r' | '\t' | ' ' => break,
-                    _ => i += 1,
-                }
-            }
-            Some(i - si)
-        }
-        _ => None,
-    }
-}
-
+/// Parse aliases from a .luaurc file using serde_json.
+/// Falls back to an empty map if the file is not valid JSON or lacks "aliases".
 fn parse_aliases_from_luaurc(content: &str) -> HashMap<String, String> {
     let mut out = HashMap::new();
-    let chars: Vec<char> = content.chars().collect();
 
-    // Find "aliases" key
-    let pos = 0;
-    let mut aliases_start = None;
-    for pattern in &["aliases", "\"aliases\"", "'aliases'"] {
-        if let Some(idx) = content[pos..].find(pattern) {
-            aliases_start = Some(pos + idx);
-            break;
+    // Try standard JSON parsing first
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(content) {
+        if let Some(aliases) = json.get("aliases").and_then(|v| v.as_object()) {
+            for (key, value) in aliases {
+                if let Some(v_str) = value.as_str() {
+                    let normalized = if key.starts_with('@') {
+                        key.clone()
+                    } else {
+                        format!("@{}", key)
+                    };
+                    if !v_str.is_empty() {
+                        out.insert(normalized, v_str.to_string());
+                    }
+                }
+            }
         }
+        return out;
     }
-    let Some(as_pos) = aliases_start else {
-        return out;
-    };
 
-    // Find opening brace
-    let Some(br_rel) = content[as_pos..].find('{') else {
-        return out;
-    };
-    let mut i = as_pos + br_rel + 1;
-    let mut depth = 1;
+    // Fallback: the file might be JSONC (with comments). Strip lines starting with //
+    // and try again.
+    let stripped: String = content
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            !(trimmed.starts_with("//") || trimmed.starts_with('#'))
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
 
-    while i < chars.len() && depth > 0 {
-        // Skip whitespace / commas
-        while i < chars.len() && matches!(chars[i], ' ' | '\t' | '\n' | '\r' | ',') {
-            i += 1;
-        }
-        if i >= chars.len() || depth == 0 {
-            break;
-        }
-
-        if chars[i] == '}' {
-            depth -= 1;
-            i += 1;
-            continue;
-        }
-
-        // Key must be a string
-        if chars[i] != '"' && chars[i] != '\'' {
-            if let Some(skip) = skip_json_value(&chars, i) {
-                i += skip;
-            } else {
-                i += 1;
-            }
-            continue;
-        }
-
-        let Some((key, kc)) = parse_json_string(&chars, i) else {
-            break;
-        };
-        i += kc;
-
-        // Skip to colon/equals
-        while i < chars.len() && matches!(chars[i], ' ' | '\t' | '\n' | '\r') {
-            i += 1;
-        }
-        if i < chars.len() && (chars[i] == ':' || chars[i] == '=') {
-            i += 1;
-        }
-        while i < chars.len() && matches!(chars[i], ' ' | '\t' | '\n' | '\r') {
-            i += 1;
-        }
-        if i >= chars.len() {
-            break;
-        }
-
-        // Value: only accept strings for alias paths
-        if chars[i] == '"' || chars[i] == '\'' {
-            let Some((value, vc)) = parse_json_string(&chars, i) else {
-                break;
-            };
-            let normalized = if key.starts_with('@') {
-                key.to_string()
-            } else {
-                format!("@{}", key)
-            };
-            if !normalized.is_empty() && !value.is_empty() {
-                out.insert(normalized, value);
-            }
-            i += vc;
-        } else {
-            // Non-string value — skip
-            if let Some(skip) = skip_json_value(&chars, i) {
-                i += skip;
-            } else {
-                i += 1;
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&stripped)
+        && let Some(aliases) = json.get("aliases").and_then(|v| v.as_object())
+    {
+        for (key, value) in aliases {
+            if let Some(v_str) = value.as_str() {
+                let normalized = if key.starts_with('@') {
+                    key.clone()
+                } else {
+                    format!("@{}", key)
+                };
+                if !v_str.is_empty() {
+                    out.insert(normalized, v_str.to_string());
+                }
             }
         }
     }
@@ -521,17 +356,10 @@ fn resolve_spec_base(
             return Ok(current_module.to_path_buf());
         }
         let rest = rest.strip_prefix('/').unwrap_or(rest);
-        let self_root = if is_init_module(current_module) {
-            current_module
-                .parent()
-                .unwrap_or(rt.entry_dir.as_path())
-                .to_path_buf()
-        } else {
-            current_module
-                .parent()
-                .unwrap_or(rt.entry_dir.as_path())
-                .to_path_buf()
-        };
+        let self_root = current_module
+            .parent()
+            .unwrap_or(rt.entry_dir.as_path())
+            .to_path_buf();
         return Ok(self_root.join(rest));
     }
     if let Some(alias_spec) = spec.strip_prefix('@') {
@@ -1011,7 +839,7 @@ unsafe extern "C-unwind" fn nicy_require(l: *mut LuauState) -> c_int {
         }
     }
 
-    let is_bytecode = resolved.extension().map_or(false, |e| e == "luauc");
+    let is_bytecode = resolved.extension().is_some_and(|e| e == "luauc");
 
     let (code_bytes, code_is_bytecode, module_native_requested) = if is_bytecode {
         match fs::read(&resolved) {
@@ -1082,18 +910,11 @@ unsafe extern "C-unwind" fn nicy_require(l: *mut LuauState) -> c_int {
         } else {
             unsafe { CStr::from_ptr(err) }.to_string_lossy().to_string()
         };
-        // Captura stack trace para melhor diagnóstico
-        let _traceback = unsafe {
+        // Capture stack trace for diagnostics (consumed by push_error below)
+        unsafe {
             compat::luaL_traceback(l, l, std::ptr::null(), 0);
-            let tb = lua::lua_tostring(l, -1);
-            let tb_str = if tb.is_null() {
-                String::new()
-            } else {
-                CStr::from_ptr(tb).to_string_lossy().to_string()
-            };
             lua::lua_pop(l, 1);
-            tb_str
-        };
+        }
         unsafe { lua::lua_settop(l, -2) };
         let _ = with_runtime(l, |rt| {
             rt.loading.remove(&resolved);
@@ -1153,18 +974,11 @@ unsafe extern "C-unwind" fn nicy_require(l: *mut LuauState) -> c_int {
             unsafe { CStr::from_ptr(err) }.to_string_lossy().to_string()
         };
 
-        // Captura stack trace para melhor diagnóstico
-        let _traceback = unsafe {
+        // Capture stack trace for diagnostics
+        unsafe {
             compat::luaL_traceback(th, th, std::ptr::null(), 0);
-            let tb = lua::lua_tostring(th, -1);
-            let tb_str = if tb.is_null() {
-                String::new()
-            } else {
-                CStr::from_ptr(tb).to_string_lossy().to_string()
-            };
             lua::lua_pop(th, 1);
-            tb_str
-        };
+        }
 
         unsafe { lua::lua_settop(l, -2) };
         with_runtime(l, |rt| {
@@ -1217,5 +1031,59 @@ unsafe extern "C-unwind" fn nicy_require(l: *mut LuauState) -> c_int {
 
 pub fn install_require(l: *mut LuauState) {
     unsafe { lua::lua_pushcfunction(l, nicy_require) };
-    unsafe { lua::lua_setglobal(l, b"require\0".as_ptr() as *const c_char) };
+    unsafe { lua::lua_setglobal(l, c"require".as_ptr() as *const c_char) };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_aliases_valid_json() {
+        let json = r#"{"aliases": {"@MyLib": "libs/mylib", "@utils": "libs/utils"}}"#;
+        let aliases = parse_aliases_from_luaurc(json);
+        assert_eq!(aliases.get("@MyLib").unwrap(), "libs/mylib");
+        assert_eq!(aliases.get("@utils").unwrap(), "libs/utils");
+    }
+
+    #[test]
+    fn test_parse_aliases_adds_at_prefix() {
+        let json = r#"{"aliases": {"MyLib": "libs/mylib"}}"#;
+        let aliases = parse_aliases_from_luaurc(json);
+        assert!(aliases.contains_key("@MyLib"));
+        assert_eq!(aliases.get("@MyLib").unwrap(), "libs/mylib");
+    }
+
+    #[test]
+    fn test_parse_aliases_skips_empty_values() {
+        let json = r#"{"aliases": {"@EmptyAlias": ""}}"#;
+        let aliases = parse_aliases_from_luaurc(json);
+        assert!(!aliases.contains_key("@EmptyAlias"));
+    }
+
+    #[test]
+    fn test_parse_aliases_invalid_json() {
+        let aliases = parse_aliases_from_luaurc("not json at all");
+        assert!(aliases.is_empty());
+    }
+
+    #[test]
+    fn test_parse_aliases_jsonc_with_comments() {
+        let jsonc = r#"{
+    // This is a comment
+    "aliases": {
+        # Another comment style
+        "@Lib": "libs/lib"
+    }
+}"#;
+        let aliases = parse_aliases_from_luaurc(jsonc);
+        assert_eq!(aliases.get("@Lib").unwrap(), "libs/lib");
+    }
+
+    #[test]
+    fn test_parse_aliases_missing_aliases_key() {
+        let json = r#"{"some_other_key": "value"}"#;
+        let aliases = parse_aliases_from_luaurc(json);
+        assert!(aliases.is_empty());
+    }
 }
