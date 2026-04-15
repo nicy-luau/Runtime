@@ -38,13 +38,13 @@ return {
             -- because luaL_error would longjmp through Rust's catch_unwind.
             local result, err = task.cancel(BIG)
             expect.eq(result, nil, "cancel returns nil for ID above 2^53")
-            expect.ok(err:find("exceeds safe integer range"), "error message mentions 2^53 limit")
+            expect.truthy(string.find(err, "exceeds safe integer range"), "error message mentions 2^53 limit")
         end,
     },
     {
         name = "accepts ID at exact 2^53 boundary",
         run = function()
-            local MAX_SAFE = 9007199254740992
+            local MAX_SAFE = 2^53
             -- Should not throw, but returns false since no such delay exists
             local result = task.cancel(MAX_SAFE)
             expect.eq(result, false, "cancel(2^53) returns false (no such delay)")
