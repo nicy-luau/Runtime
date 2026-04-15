@@ -31,11 +31,13 @@ return {
     {
         name = "rejects ID above 2^53 (precision loss)",
         run = function()
-            local MAX_SAFE = 9007199254740992
-            local success, err = pcall(function()
-                task.cancel(MAX_SAFE + 1)
-            end)
-            expect.eq(success, false, "cancel throws error for ID above 2^53")
+            -- In f64, MAX_SAFE+1 == MAX_SAFE due to precision loss.
+            -- Use a value that's clearly above 2^53.
+            local BIG = 2^54
+            -- cancel returns nil + error message instead of throwing,
+            -- because luaL_error would longjmp through Rust's catch_unwind.
+            local result, err = task.cancel(BIG)
+            expect.eq(result, nil, "cancel returns nil for ID above 2^53")
             expect.ok(err:find("exceeds safe integer range"), "error message mentions 2^53 limit")
         end,
     },
