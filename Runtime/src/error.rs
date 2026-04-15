@@ -15,6 +15,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
 //! - pcall isolation: Errors inside pcall are NOT printed
 //! - Fatal require: require() without pcall terminates execution
 
+use mlua_sys::luau::lua;
 use std::cell::Cell;
 use std::env;
 use std::fmt;
@@ -355,8 +356,8 @@ impl NicyError {
 
 /// Clean up Windows extended path prefix \\?\
 pub fn clean_path(path: &str) -> String {
-    if path.starts_with(r"\\?\") {
-        path[4..].to_string()
+    if let Some(stripped) = path.strip_prefix(r"\\?\") {
+        stripped.to_string()
     } else {
         path.to_string()
     }
@@ -418,11 +419,11 @@ impl ErrorFormatter {
                     Colors::reset()
                 ));
 
-                if !chain.is_empty() {
-                    if let Some(frame) = chain.frames.last() {
-                        let line_info = frame.line.map(|l| format!(":{}", l)).unwrap_or_default();
-                        output.push_str(&format!("  at {}{}\n", frame.file, line_info));
-                    }
+                if !chain.is_empty()
+                    && let Some(frame) = chain.frames.last()
+                {
+                    let line_info = frame.line.map(|l| format!(":{}", l)).unwrap_or_default();
+                    output.push_str(&format!("  at {}{}\n", frame.file, line_info));
                 }
             }
 
@@ -873,9 +874,10 @@ impl ErrorFormatter {
                     Colors::bold(),
                     res
                 ));
-                if let Some(stack) = stack_trace {
-                    if !stack.is_empty() {
-                        for stack_line in stack.lines() {
+                if let Some(stack) = stack_trace
+                    && !stack.is_empty()
+                {
+                    for stack_line in stack.lines() {
                             output.push_str(&format!(
                                 "    {}{}{}\n",
                                 Colors::dim(),
@@ -884,7 +886,6 @@ impl ErrorFormatter {
                             ));
                         }
                     }
-                }
                 if let (Some(f), Some(l)) = (file, line) {
                     output.push_str(&format!(
                         "    {}at <main>, {}:{}{}\n",
@@ -1674,32 +1675,31 @@ impl ErrorFormatter {
 /// Capture stack trace from Lua state using debug.traceback
 #[allow(dead_code)]
 pub unsafe fn capture_lua_stack_trace(l: *mut crate::LuauState) -> Option<String> {
-    use crate::api;
     use std::ffi::CStr;
 
     unsafe {
         // Push debug.traceback onto stack
-        api::lua_getglobal(l, b"debug\0".as_ptr() as *const _);
-        if api::lua_type(l, -1) != api::LUA_TTABLE {
-            api::lua_pop(l, 1);
+        lua::lua_getglobal(l, c"debug".as_ptr() as *const _);
+        if lua::lua_type(l, -1) != lua::LUA_TTABLE {
+            lua::lua_pop(l, 1);
             return None;
         }
 
-        api::lua_getfield(l, -1, b"traceback\0".as_ptr() as *const _);
-        api::lua_remove(l, -2); // Remove debug table
+        lua::lua_getfield(l, -1, c"traceback".as_ptr() as *const _);
+        lua::lua_remove(l, -2); // Remove debug table
 
-        if api::lua_type(l, -1) != api::LUA_TFUNCTION {
-            api::lua_pop(l, 1);
+        if lua::lua_type(l, -1) != lua::LUA_TFUNCTION {
+            lua::lua_pop(l, 1);
             return None;
         }
 
         // Call debug.traceback()
-        if api::lua_pcall(l, 0, 1, 0) != 0 {
-            api::lua_pop(l, 1);
+        if lua::lua_pcall(l, 0, 1, 0) != 0 {
+            lua::lua_pop(l, 1);
             return None;
         }
 
-        let traceback_ptr = api::lua_tostring(l, -1);
+        let traceback_ptr = lua::lua_tostring(l, -1);
         let traceback = if !traceback_ptr.is_null() {
             let s = CStr::from_ptr(traceback_ptr).to_string_lossy().to_string();
             Some(clean_path_in_string(&s))
@@ -1707,7 +1707,7 @@ pub unsafe fn capture_lua_stack_trace(l: *mut crate::LuauState) -> Option<String
             None
         };
 
-        api::lua_pop(l, 1);
+        lua::lua_pop(l, 1);
         traceback
     }
 }
@@ -1809,12 +1809,13 @@ impl ErrorReporter {
         }
     }
 
-    /// Report error from Lua stack - extracts message and formats it
+    /// # Safety
+    /// Caller must ensure `l` is a valid, non-null pointer to an open `lua_State`.
+    /// The error message must be on top of the Lua stack.
     pub unsafe fn report_lua_error(l: *mut crate::LuauState, _context: &str) {
-        use crate::api;
         use std::ffi::CStr;
 
-        let err_ptr = unsafe { api::lua_tostring(l, -1) };
+        let err_ptr = unsafe { lua::lua_tostring(l, -1) };
         let message = if !err_ptr.is_null() {
             clean_path_in_string(&unsafe { CStr::from_ptr(err_ptr) }.to_string_lossy())
         } else {
@@ -1835,17 +1836,13 @@ impl ErrorReporter {
 
     /// Extract file:line from error message like "file.lua:42: error message"
     fn extract_location(message: &str) -> (Option<String>, Option<u32>) {
-        if let Some(colon_pos) = message.find(':') {
-            let potential_file = &message[..colon_pos];
-            let rest = &message[colon_pos + 1..];
-
-            if let Some(end_line) = rest.find(|c: char| !c.is_ascii_digit()) {
-                if end_line > 0 {
-                    if let Ok(line) = rest[..end_line].parse::<u32>() {
-                        return (Some(potential_file.to_string()), Some(line));
-                    }
-                }
-            }
+        if let Some(colon_pos) = message.find(':')
+            && let rest = &message[colon_pos + 1..]
+            && let Some(end_line) = rest.find(|c: char| !c.is_ascii_digit())
+            && end_line > 0
+            && let Ok(line) = rest[..end_line].parse::<u32>()
+        {
+            return (Some(message[..colon_pos].to_string()), Some(line));
         }
         (None, None)
     }
@@ -1988,9 +1985,9 @@ fn get_log_file_path() -> Option<String> {
 
 /// Auto-initialize file logging if NICY_LOG_FILE is set
 pub fn auto_init_logging() {
-    if let Some(path) = get_log_file_path() {
-        if let Err(e) = init_file_logging(&path) {
-            eprintln!("Failed to init logging: {}", e);
-        }
+    if let Some(path) = get_log_file_path()
+        && let Err(e) = init_file_logging(&path)
+    {
+        eprintln!("Failed to init logging: {}", e);
     }
 }
