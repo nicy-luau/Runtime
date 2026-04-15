@@ -1,5 +1,7 @@
 # Nicy Runtime
 
+[![GitHub Release](https://img.shields.io/github/v/release/nicy-luau/Runtime?style=flat-square&color=blue&logo=github)](https://github.com/nicy-luau/Runtime/releases/latest)
+
 A blazing-fast Luau runtime environment with a modular architecture. Built in Rust.
 
 ## Overview
