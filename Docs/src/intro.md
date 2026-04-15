@@ -67,22 +67,38 @@ Pre-built binaries for every major platform:
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────┐
-│                  Host Application                 │
-│              (C / C++ / Rust / etc.)             │
-├─────────────────────────────────────────────────┤
-│              nicyruntime (cdylib)                 │
-│  ┌─────────────┬─────────────┬─────────────────┐  │
-│  │  Luau VM    │  Module     │  Task           │  │
-│  │  (mlua-sys) │  Resolver   │  Scheduler      │  │
-│  │             │             │                 │  │
-│  │  CodeGen    │  Cache      │  Coroutines     │  │
-│  │  (JIT)      │  System     │  (async)        │  │
-│  └─────────────┴─────────────┴─────────────────┘  │
-├─────────────────────────────────────────────────┤
-│                  nicy (CLI)                       │
-│            (Dynamic loader + router)              │
-└─────────────────────────────────────────────────┘
+Host Application (C / C++ / Rust)
+         │
+         ▼
+┌───────────────────────────┐
+│   nicyruntime (cdylib)    │
+│                           │
+│  ┌───────────────────┐    │
+│  │  Luau VM          │    │
+│  │  (mlua-sys)       │    │
+│  │  + CodeGen (JIT)  │    │
+│  └───────────────────┘    │
+│                           │
+│  ┌───────────────────┐    │
+│  │  Module Resolver  │    │
+│  │  + Cache System   │    │
+│  └───────────────────┘    │
+│                           │
+│  ┌───────────────────┐    │
+│  │  Task Scheduler   │    │
+│  │  (coroutines)     │    │
+│  └───────────────────┘    │
+│                           │
+│  ┌───────────────────┐    │
+│  │  Error Reporter   │    │
+│  └───────────────────┘    │
+└───────────────────────────┘
+         ▲
+         │
+┌───────────────────────────┐
+│   nicy (CLI)              │
+│   Dynamic loader + router │
+└───────────────────────────┘
 ```
 
 ## Project Structure
@@ -91,25 +107,25 @@ Pre-built binaries for every major platform:
 NicyRuntime/
 ├── Runtime/              # Core cdylib library
 │   ├── src/
-│   │   ├── lib.rs                # Main entry point, FFI functions
+│   │   ├── lib.rs                # Main entry point, FFI
 │   │   ├── require_resolver.rs   # Custom module resolver
 │   │   ├── task_scheduler.rs     # Async task scheduler
-│   │   ├── ffi_exports.rs        # 70+ C-ABI Lua API wrappers
+│   │   ├── ffi_exports.rs        # 65+ C-ABI Lua API wrappers
 │   │   └── error.rs              # Error reporting system
 │   └── tests/            # Luau test suite (32 files)
 ├── Nicy/                 # CLI executable
-│   └── src/main.rs       # Dynamic loading & command routing
+│   └── src/main.rs       # Dynamic loading & routing
 ├── build.ps1             # Multi-platform build script
 └── Docs/                 # This documentation site
 ```
 
 ## Quick Links
 
-- **[Getting Started](getting-started/installation)** — Install and run your first script
-- **[CLI Reference](cli/commands)** — All `nicy` commands and flags
-- **[Runtime API](runtime-api/nicy-start)** — FFI functions for embedding
-- **[FFI Reference](ffi-reference/overview)** — Complete Lua C API wrapper docs
-- **[Guides](guides/embedding-c)** — Practical tutorials
+- **[Getting Started](getting-started/installation.md)** — Install and run your first script
+- **[CLI Reference](cli/commands.md)** — All `nicy` commands
+- **[Runtime API](runtime-api/nicy-start.md)** — FFI functions for embedding
+- **[FFI Reference](ffi-reference/index.md)** — Complete Lua C API wrapper docs
+- **[Guides](guides/embedding-c.md)** — Practical tutorials
 
 ## License
 
