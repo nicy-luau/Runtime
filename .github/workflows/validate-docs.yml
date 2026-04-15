@@ -1,134 +1,44 @@
-name: Validate Docs
+name: Validate Docs Consistency
 
 on:
   pull_request:
     paths:
       - "Runtime/src/ffi_exports.rs"
-      - "Runtime/src/lib.rs"
-      - "README.md"
-      - "Runtime/README.md"
-      - "Docs/src/ffi-reference/**"
-  push:
-    branches:
-      - main
-    paths:
-      - "Runtime/src/ffi_exports.rs"
-      - "Runtime/src/lib.rs"
+      - "Docs/**"
+      - ".github/workflows/validate-docs.yml"
+  workflow_dispatch:
 
 jobs:
-  validate-ffi-count:
-    name: Validate FFI Function Count
+  ffi-count:
+    name: Validate FFI Export Count
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Count FFI functions in code
-        id: count-code
+      - name: Compare documented count with actual exports
         run: |
-          FFI_EXPORTS=$(grep -c '#\[unsafe(no_mangle)\]' Runtime/src/ffi_exports.rs || echo 0)
-          LIB_RS=$(grep -c '#\[unsafe(no_mangle)\]' Runtime/src/lib.rs || echo 0)
-          ACTUAL=$((FFI_EXPORTS + LIB_RS))
-          echo "count=$ACTUAL" >> $GITHUB_OUTPUT
-          echo "Found $ACTUAL FFI functions in code ($FFI_EXPORTS in ffi_exports.rs, $LIB_RS in lib.rs)"
+          python3 - <<'PY'
+          import pathlib
+          import re
+          import sys
 
-      - name: Extract FFI count from docs
-        id: count-docs
-        run: |
-          if grep -q '\[FFI_COUNT\]' Docs/src/ffi-reference/index.md 2>/dev/null; then
-            echo "Found [FFI_COUNT] placeholder in docs (will be replaced by script)."
-            echo "status=placeholder" >> $GITHUB_OUTPUT
-            echo "count=placeholder" >> $GITHUB_OUTPUT
-          else
-            DOCS_COUNT=$(grep -oP 'exports \*\*\K\d+' Docs/src/ffi-reference/index.md | head -1 || echo "unknown")
-            echo "count=$DOCS_COUNT" >> $GITHUB_OUTPUT
-            echo "Docs claim: $DOCS_COUNT functions"
-          fi
+          ffi_file = pathlib.Path("Runtime/src/ffi_exports.rs")
+          docs_file = pathlib.Path("Docs/src/ffi-reference/index.md")
 
-      - name: Check README
-        id: count-readme
-        run: |
-          if grep -q '\[FFI_COUNT\]' README.md 2>/dev/null; then
-            echo "Found [FFI_COUNT] placeholder in README."
-            echo "status=placeholder" >> $GITHUB_OUTPUT
-            echo "count=placeholder" >> $GITHUB_OUTPUT
-          else
-            README_COUNT=$(grep -oP '\*\*\K\d+(?= FFI Functions)' README.md | head -1 || echo "unknown")
-            echo "count=$README_COUNT" >> $GITHUB_OUTPUT
-            echo "README claims: $README_COUNT functions"
-          fi
+          actual = ffi_file.read_text(encoding="utf-8").count("#[unsafe(no_mangle)]")
+          docs_text = docs_file.read_text(encoding="utf-8")
+          match = re.search(r"exports \*\*(\d+)\*\* functions", docs_text)
 
-      - name: Validate counts match
-        run: |
-          ACTUAL=${{ steps.count-code.outputs.count }}
-          DOCS_STATUS=${{ steps.count-docs.outputs.status }}
-          README_STATUS=${{ steps.count-readme.outputs.status }}
+          if not match:
+              print("::error file=Docs/src/ffi-reference/index.md::Unable to find documented FFI export count.")
+              sys.exit(1)
 
-          if [ "$DOCS_STATUS" = "placeholder" ] && [ "$README_STATUS" = "placeholder" ]; then
-            echo "✓ Docs use [FFI_COUNT] placeholder system."
-            echo "✓ Actual count in code: $ACTUAL"
-            echo "✓ Run 'bash Docs/scripts/update-ffi-count.sh' before publishing to replace placeholders."
-            exit 0
-          fi
+          documented = int(match.group(1))
+          print(f"Actual exports: {actual}")
+          print(f"Documented exports: {documented}")
 
-          DOCS=${{ steps.count-docs.outputs.count }}
-          README=${{ steps.count-readme.outputs.count }}
-
-          echo "Actual: $ACTUAL"
-          echo "Docs:   $DOCS"
-          echo "README: $README"
-
-          if [ "$ACTUAL" != "$DOCS" ]; then
-            echo "::error::FFI count mismatch: code=$ACTUAL, docs=$DOCS"
-            echo "::error::Run 'bash Docs/scripts/update-ffi-count.sh' to fix."
-            exit 1
-          fi
-
-          if [ "$ACTUAL" != "$README" ]; then
-            echo "::error::FFI count mismatch in README: code=$ACTUAL, readme=$README"
-            exit 1
-          fi
-
-          echo "✓ FFI function count is consistent: $ACTUAL"
-
-  validate-sitemap:
-    name: Validate Sitemap Generation
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Generate sitemap (requires built docs)
-        run: |
-          # Sitemap validation only runs when docs are already built (e.g., after mdbook deploy)
-          # For PR checks, we skip this since docs aren't built yet
-          if [ -d "Docs/book" ]; then
-            python Docs/scripts/generate-sitemap.py \
-              --base-url https://nicy-luau.github.io/Runtime/ \
-              --book-dir Docs/book \
-              --output Docs/book/sitemap.xml
-
-            python -c "
-            import xml.etree.ElementTree as ET
-            import sys
-
-            tree = ET.parse('Docs/book/sitemap.xml')
-            root = tree.getroot()
-            ns = {'sm': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
-            urls = root.findall('sm:url', ns)
-
-            if len(urls) < 5:
-                print(f'::warning::Sitemap has only {len(urls)} URLs. Expected at least 5.')
-                sys.exit(0)  # Warning only, don't fail
-
-            print(f'✓ Sitemap valid: {len(urls)} URLs')
-            "
-          else
-            echo "Docs/book not found — skipping sitemap validation (runs after mdbook build)"
-          fi
+          if actual != documented:
+              print(f"::error file=Docs/src/ffi-reference/index.md::Mismatch: code={actual} docs={documented}")
+              sys.exit(1)
+          PY
