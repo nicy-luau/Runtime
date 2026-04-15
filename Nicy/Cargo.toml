@@ -1,0 +1,8 @@
+
+[package]
+name = "nicy"
+version = "1.0.0-alpha"
+edition = "2024"
+
+[dependencies]
+libloading = "0.9"
