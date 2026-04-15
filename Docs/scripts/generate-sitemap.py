@@ -25,6 +25,8 @@ def to_absolute_url(book_dir: Path, html_file: Path, site_root: str) -> str:
         return site_root
     if rel_path.endswith("/index.html"):
         return f"{site_root}{rel_path[:-len('index.html')]}"
+    if "/" not in rel_path:
+        return f"{site_root}{rel_path}"
     return f"{site_root}{rel_path[:-len('.html')]}/"
 
 
