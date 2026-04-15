@@ -7,16 +7,19 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
 */
 
 use libloading::{Library, Symbol};
-use mlua_sys::luau::{compat, lauxlib, lua, lualib};
+use mlua_sys::luau::lauxlib;
+use mlua_sys::luau::lualib;
+use mlua_sys::luau::{compat, lua};
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fs;
 use std::os::raw::{c_char, c_int};
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 
+mod api;
 mod error;
 mod ffi_exports;
 mod require_resolver;
@@ -36,138 +39,6 @@ static ERR_HANDLER_REF: AtomicI32 = AtomicI32::new(0);
 /// FIX (IMP-4): Prevents race conditions when multiple threads/processes
 /// call os_tmpname simultaneously.
 static TMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-/// Thin wrappers around Luau C API functions used throughout the runtime.
-/// Provides a consistent calling convention for lib.rs internal usage.
-#[allow(non_snake_case)]
-mod api {
-    use super::{compat, lauxlib, lua, lualib};
-    use std::os::raw::{c_char, c_int};
-
-    pub type LuauState = lua::lua_State;
-    pub const LUA_REGISTRYINDEX: c_int = lua::LUA_REGISTRYINDEX;
-    pub const LUA_TNIL: c_int = lua::LUA_TNIL;
-    pub const LUA_TTABLE: c_int = lua::LUA_TTABLE;
-    pub const LUA_TFUNCTION: c_int = lua::LUA_TFUNCTION;
-
-    pub unsafe fn lua_pushnil(l: *mut LuauState) {
-        unsafe { lua::lua_pushnil(l) };
-    }
-
-    pub unsafe fn lua_pop(l: *mut LuauState, n: c_int) {
-        unsafe { lua::lua_pop(l, n) };
-    }
-
-    pub unsafe fn lua_pushlstring(l: *mut LuauState, s: *const c_char, len: usize) {
-        unsafe { compat::lua_pushlstring(l, s, len) };
-    }
-
-    pub unsafe fn lua_tostring(l: *mut LuauState, idx: c_int) -> *const c_char {
-        unsafe { lua::lua_tostring(l, idx) }
-    }
-
-    pub unsafe fn lua_gettop(l: *mut LuauState) -> c_int {
-        unsafe { lua::lua_gettop(l) }
-    }
-
-    pub unsafe fn lua_getfield(l: *mut LuauState, idx: c_int, k: *const c_char) {
-        unsafe { lua::lua_getfield(l, idx, k) };
-    }
-
-    pub unsafe fn lua_type(l: *mut LuauState, idx: c_int) -> c_int {
-        unsafe { lua::lua_type(l, idx) }
-    }
-
-    pub unsafe fn lua_settop(l: *mut LuauState, idx: c_int) {
-        unsafe { lua::lua_settop(l, idx) };
-    }
-
-    pub unsafe fn lua_createtable(l: *mut LuauState, narr: c_int, nrec: c_int) {
-        unsafe { lua::lua_createtable(l, narr, nrec) };
-    }
-
-    pub unsafe fn lua_pushstring(l: *mut LuauState, s: *const c_char) {
-        unsafe { compat::lua_pushstring(l, s) };
-    }
-
-    pub unsafe fn lua_setfield(l: *mut LuauState, idx: c_int, k: *const c_char) {
-        unsafe { lua::lua_setfield(l, idx, k) };
-    }
-
-    pub unsafe fn lua_setmetatable(l: *mut LuauState, idx: c_int) -> c_int {
-        unsafe { lua::lua_setmetatable(l, idx) }
-    }
-
-    pub unsafe fn lua_pushvalue(l: *mut LuauState, idx: c_int) {
-        unsafe { lua::lua_pushvalue(l, idx) };
-    }
-
-    pub unsafe fn lua_absindex(l: *mut LuauState, idx: c_int) -> c_int {
-        unsafe { lua::lua_absindex(l, idx) }
-    }
-
-    pub unsafe fn lua_gettable(l: *mut LuauState, idx: c_int) {
-        unsafe { lua::lua_gettable(l, idx) };
-    }
-
-    pub unsafe fn lua_remove(l: *mut LuauState, idx: c_int) {
-        unsafe { lua::lua_remove(l, idx) };
-    }
-
-    pub unsafe fn luaL_checkstring(l: *mut LuauState, narg: c_int) -> *const c_char {
-        unsafe { lauxlib::luaL_checkstring(l, narg) }
-    }
-
-    pub unsafe fn lua_pushcfunction(l: *mut LuauState, f: lua::lua_CFunction) {
-        unsafe { lua::lua_pushcfunction(l, f) };
-    }
-
-    pub unsafe fn lua_settable(l: *mut LuauState, idx: c_int) {
-        unsafe { lua::lua_settable(l, idx) };
-    }
-
-    pub unsafe fn lua_pushboolean(l: *mut LuauState, b: c_int) {
-        unsafe { lua::lua_pushboolean(l, b) };
-    }
-
-    pub unsafe fn lua_setglobal(l: *mut LuauState, k: *const c_char) {
-        unsafe { lua::lua_setglobal(l, k) };
-    }
-
-    pub unsafe fn lua_getglobal(l: *mut LuauState, k: *const c_char) {
-        unsafe { lua::lua_getglobal(l, k) };
-    }
-
-    pub unsafe fn luaL_newstate() -> *mut LuauState {
-        unsafe { lauxlib::luaL_newstate() }
-    }
-
-    pub unsafe fn luaL_openlibs(l: *mut LuauState) {
-        unsafe { lualib::luaL_openlibs(l) };
-    }
-
-    pub unsafe fn lua_close(l: *mut LuauState) {
-        unsafe { lua::lua_close(l) };
-    }
-
-    pub unsafe fn luaL_loadbuffer(
-        l: *mut LuauState,
-        buff: *const c_char,
-        sz: usize,
-        name: *const c_char,
-    ) -> c_int {
-        unsafe { compat::luaL_loadbuffer(l, buff, sz, name) }
-    }
-
-    pub unsafe fn lua_pcall(
-        l: *mut LuauState,
-        nargs: c_int,
-        nresults: c_int,
-        errfunc: c_int,
-    ) -> c_int {
-        unsafe { lua::lua_pcall(l, nargs, nresults, errfunc) }
-    }
-}
 
 #[cfg(windows)]
 mod hires_timer {
@@ -213,7 +84,7 @@ mod hires_timer {
     }
 }
 
-type LuauState = api::LuauState;
+type LuauState = lua::lua_State;
 
 unsafe fn push_loadlib_error(l: *mut LuauState, msg: &str) -> c_int {
     let filtered = msg.replace('\0', "?");
@@ -221,12 +92,12 @@ unsafe fn push_loadlib_error(l: *mut LuauState, msg: &str) -> c_int {
     // Also emit a warn so the error is visible even if the script doesn't check the return value
     ErrorReporter::warn(&format!("runtime.loadlib failed: {}", filtered));
 
-    unsafe { api::lua_pushnil(l) };
+    unsafe { lua::lua_pushnil(l) };
     unsafe {
-        api::lua_pushlstring(
+        compat::lua_pushlstring(
             l,
             filtered.as_ptr() as *const c_char,
-            filtered.as_bytes().len(),
+            filtered.len(),
         )
     };
     2
@@ -248,7 +119,7 @@ pub fn shutdown_loaded_libs() {
     }
 }
 
-fn panic_payload_to_string(p: Box<dyn std::any::Any + Send>) -> String {
+pub(crate) fn panic_payload_to_string(p: Box<dyn std::any::Any + Send>) -> String {
     if let Some(s) = p.downcast_ref::<&str>() {
         return (*s).to_string();
     }
@@ -307,12 +178,9 @@ fn parse_compiler_directives(source: &str) -> (CompilerDirectives, String) {
             directives.native = true;
             directive_end_line = i + 1;
         } else if let Some(rest) = trimmed.strip_prefix("--!optimize") {
-            let rest = rest.trim();
-            if let Some(num_str) = rest.strip_prefix(' ') {
-                if let Ok(n) = num_str.trim().parse::<i32>() {
-                    directives.optimization_level = n.clamp(0, 2);
-                    directive_end_line = i + 1;
-                }
+            if let Ok(n) = rest.trim().parse::<i32>() {
+                directives.optimization_level = n.clamp(0, 2);
+                directive_end_line = i + 1;
             }
         } else if trimmed == "--!coverage" || trimmed.starts_with("--!coverage ") {
             directives.coverage = true;
@@ -321,12 +189,9 @@ fn parse_compiler_directives(source: &str) -> (CompilerDirectives, String) {
             directives.profile = true;
             directive_end_line = i + 1;
         } else if let Some(rest) = trimmed.strip_prefix("--!typeinfo") {
-            let rest = rest.trim();
-            if let Some(num_str) = rest.strip_prefix(' ') {
-                if let Ok(n) = num_str.trim().parse::<i32>() {
-                    directives.type_info_level = n.clamp(0, 1);
-                    directive_end_line = i + 1;
-                }
+            if let Ok(n) = rest.trim().parse::<i32>() {
+                directives.type_info_level = n.clamp(0, 1);
+                directive_end_line = i + 1;
             }
         } else if trimmed.starts_with("--!") {
             // Unknown or non-compiler directive (e.g. --!strict, --!nocheck)
@@ -348,7 +213,7 @@ fn parse_compiler_directives(source: &str) -> (CompilerDirectives, String) {
 }
 
 unsafe fn string_from_stack(l: *mut LuauState, idx: c_int) -> String {
-    let p = unsafe { api::lua_tostring(l, idx) };
+    let p = unsafe { lua::lua_tostring(l, idx) };
     if p.is_null() {
         return "nil".to_string();
     }
@@ -356,7 +221,7 @@ unsafe fn string_from_stack(l: *mut LuauState, idx: c_int) -> String {
 }
 
 unsafe extern "C-unwind" fn nicy_runtime_warn(l: *mut LuauState) -> c_int {
-    let top = unsafe { api::lua_gettop(l) };
+    let top = unsafe { lua::lua_gettop(l) };
     if top <= 0 {
         ErrorReporter::warn("");
         return 0;
@@ -371,39 +236,39 @@ unsafe extern "C-unwind" fn nicy_runtime_warn(l: *mut LuauState) -> c_int {
 
 unsafe fn get_or_create_extension_cache_table(l: *mut LuauState) {
     unsafe {
-        api::lua_getfield(
+        lua::lua_getfield(
             l,
-            api::LUA_REGISTRYINDEX,
-            b"nicy_ext_cache\0".as_ptr() as *const c_char,
+            lua::LUA_REGISTRYINDEX,
+            c"nicy_ext_cache".as_ptr() as *const c_char,
         )
     };
-    if unsafe { api::lua_type(l, -1) } != api::LUA_TTABLE {
+    if unsafe { lua::lua_type(l, -1) } != lua::LUA_TTABLE {
         // Table doesn't exist: remove nil and create new
-        unsafe { api::lua_settop(l, -2) };
+        unsafe { lua::lua_settop(l, -2) };
 
-        unsafe { api::lua_createtable(l, 0, 0) };
-        unsafe { api::lua_createtable(l, 0, 1) };
-        unsafe { api::lua_pushstring(l, b"v\0".as_ptr() as *const c_char) };
-        unsafe { api::lua_setfield(l, -2, b"__mode\0".as_ptr() as *const c_char) };
-        unsafe { api::lua_setmetatable(l, -2) };
+        unsafe { lua::lua_createtable(l, 0, 0) };
+        unsafe { lua::lua_createtable(l, 0, 1) };
+        unsafe { compat::lua_pushstring(l, c"v".as_ptr() as *const c_char) };
+        unsafe { lua::lua_setfield(l, -2, c"__mode".as_ptr() as *const c_char) };
+        unsafe { lua::lua_setmetatable(l, -2) };
 
-        unsafe { api::lua_pushvalue(l, -1) };
+        unsafe { lua::lua_pushvalue(l, -1) };
         unsafe {
-            api::lua_setfield(
+            lua::lua_setfield(
                 l,
-                api::LUA_REGISTRYINDEX,
-                b"nicy_ext_cache\0".as_ptr() as *const c_char,
+                lua::LUA_REGISTRYINDEX,
+                c"nicy_ext_cache".as_ptr() as *const c_char,
             )
         };
     } else {
         // Table already exists: remove from stack to balance
-        unsafe { api::lua_pop(l, 1) };
+        unsafe { lua::lua_pop(l, 1) };
     }
 }
 
 unsafe extern "C-unwind" fn nicy_runtime_loadlib(l: *mut LuauState) -> c_int {
     let result = catch_unwind(AssertUnwindSafe(|| unsafe {
-        let path_ptr = api::luaL_checkstring(l, 1);
+        let path_ptr = lauxlib::luaL_checkstring(l, 1);
         if path_ptr.is_null() {
             return Err("invalid path".to_string());
         }
@@ -421,18 +286,18 @@ unsafe extern "C-unwind" fn nicy_runtime_loadlib(l: *mut LuauState) -> c_int {
         }
 
         get_or_create_extension_cache_table(l);
-        let cache_idx = api::lua_absindex(l, -1);
-        api::lua_pushlstring(
+        let cache_idx = lua::lua_absindex(l, -1);
+        compat::lua_pushlstring(
             l,
             resolved_key.as_ptr() as *const c_char,
-            resolved_key.as_bytes().len(),
+            resolved_key.len(),
         );
-        api::lua_gettable(l, cache_idx);
-        if api::lua_type(l, -1) != api::LUA_TNIL {
-            api::lua_remove(l, cache_idx);
+        lua::lua_gettable(l, cache_idx);
+        if lua::lua_type(l, -1) != lua::LUA_TNIL {
+            lua::lua_remove(l, cache_idx);
             return Ok(1);
         }
-        api::lua_settop(l, -2);
+        lua::lua_settop(l, -2);
 
         // FIX: Wrap Library::new in catch_unwind to prevent SEH crashes on Windows
         // Library::new can trigger Windows loader exceptions (STATUS_ENTRYPOINT_NOT_FOUND,
@@ -498,15 +363,15 @@ unsafe extern "C-unwind" fn nicy_runtime_loadlib(l: *mut LuauState) -> c_int {
         }
 
         get_or_create_extension_cache_table(l);
-        let cache_idx = api::lua_absindex(l, -1);
-        api::lua_pushlstring(
+        let cache_idx = lua::lua_absindex(l, -1);
+        compat::lua_pushlstring(
             l,
             resolved_key.as_ptr() as *const c_char,
-            resolved_key.as_bytes().len(),
+            resolved_key.len(),
         );
-        api::lua_pushvalue(l, -3);
-        api::lua_settable(l, cache_idx);
-        api::lua_remove(l, cache_idx);
+        lua::lua_pushvalue(l, -3);
+        lua::lua_settable(l, cache_idx);
+        lua::lua_remove(l, cache_idx);
 
         loaded_libs()
             .lock()
@@ -531,9 +396,9 @@ unsafe extern "C-unwind" fn nicy_runtime_loadlib(l: *mut LuauState) -> c_int {
 }
 
 unsafe extern "C-unwind" fn nicy_runtime_has_jit(l: *mut LuauState) -> c_int {
-    let top = unsafe { api::lua_gettop(l) };
+    let top = unsafe { lua::lua_gettop(l) };
     let spec = if top >= 1 {
-        let ptr = unsafe { api::luaL_checkstring(l, 1) };
+        let ptr = unsafe { lauxlib::luaL_checkstring(l, 1) };
         if ptr.is_null() {
             None
         } else {
@@ -544,11 +409,12 @@ unsafe extern "C-unwind" fn nicy_runtime_has_jit(l: *mut LuauState) -> c_int {
     };
 
     let enabled = require_resolver::has_jit(l, spec);
-    unsafe { api::lua_pushboolean(l, enabled as c_int) };
+    unsafe { lua::lua_pushboolean(l, enabled as c_int) };
     1
 }
 
-/// Safe pcall wrapper that tracks pcall state for error reporting
+/// # Safety
+/// Caller must ensure `l` is a valid, non-null pointer to an open `lua_State`.
 pub unsafe fn safe_pcall(
     l: *mut LuauState,
     nargs: c_int,
@@ -556,7 +422,7 @@ pub unsafe fn safe_pcall(
     errfunc: c_int,
 ) -> c_int {
     ErrorReporter::enter_pcall(l);
-    let result = unsafe { api::lua_pcall(l, nargs, nresults, errfunc) };
+    let result = unsafe { lua::lua_pcall(l, nargs, nresults, errfunc) };
     ErrorReporter::exit_pcall(l);
     result
 }
@@ -583,7 +449,7 @@ unsafe fn install_error_handler(l: *mut LuauState) -> c_int {
             l,
             c_handler.as_ptr(),
             c_handler.as_bytes().len(),
-            b"error_handler\0".as_ptr() as *const _,
+            c"error_handler".as_ptr() as *const _,
         )
     };
 
@@ -594,7 +460,7 @@ unsafe fn install_error_handler(l: *mut LuauState) -> c_int {
     }
 
     // Load succeeded: function is on stack, call it
-    let pcall_status = unsafe { api::lua_pcall(l, 0, 1, 0) };
+    let pcall_status = unsafe { lua::lua_pcall(l, 0, 1, 0) };
     if pcall_status != 0 {
         // Pcall failed: error message is on stack, pop it
         unsafe { lua::lua_pop(l, 1) };
@@ -610,67 +476,67 @@ unsafe fn install_error_handler(l: *mut LuauState) -> c_int {
     1
 }
 
-unsafe fn push_nicy_table(l: *mut LuauState, entry_path: &PathBuf) {
+unsafe fn push_nicy_table(l: *mut LuauState, entry_path: &Path) {
     let luau_ver_ptr = nicy_luau_version();
 
     unsafe {
-        api::lua_getglobal(l, b"_G\0".as_ptr() as *const c_char);
-        if api::lua_type(l, -1) == api::LUA_TTABLE {
-            api::lua_pushstring(l, luau_ver_ptr);
-            api::lua_setfield(l, -2, b"_VERSION\0".as_ptr() as *const c_char);
+        lua::lua_getglobal(l, c"_G".as_ptr() as *const c_char);
+        if lua::lua_type(l, -1) == lua::LUA_TTABLE {
+            compat::lua_pushstring(l, luau_ver_ptr);
+            lua::lua_setfield(l, -2, c"_VERSION".as_ptr() as *const c_char);
         }
-        api::lua_pop(l, 1);
+        lua::lua_pop(l, 1);
     }
 
-    unsafe { api::lua_createtable(l, 0, 5) };
+    unsafe { lua::lua_createtable(l, 0, 5) };
 
-    unsafe { api::lua_pushstring(l, RUNTIME_VERSION.as_ptr() as *const c_char) };
-    unsafe { api::lua_setfield(l, -2, b"version\0".as_ptr() as *const c_char) };
+    unsafe { compat::lua_pushstring(l, RUNTIME_VERSION.as_ptr() as *const c_char) };
+    unsafe { lua::lua_setfield(l, -2, c"version".as_ptr() as *const c_char) };
 
-    unsafe { api::lua_pushcfunction(l, nicy_runtime_loadlib) };
-    unsafe { api::lua_setfield(l, -2, b"loadlib\0".as_ptr() as *const c_char) };
-    unsafe { api::lua_pushcfunction(l, nicy_runtime_has_jit) };
-    unsafe { api::lua_setfield(l, -2, b"hasJIT\0".as_ptr() as *const c_char) };
+    unsafe { lua::lua_pushcfunction(l, nicy_runtime_loadlib) };
+    unsafe { lua::lua_setfield(l, -2, c"loadlib".as_ptr() as *const c_char) };
+    unsafe { lua::lua_pushcfunction(l, nicy_runtime_has_jit) };
+    unsafe { lua::lua_setfield(l, -2, c"hasJIT".as_ptr() as *const c_char) };
 
     let entry_file = entry_path.to_string_lossy().to_string();
     unsafe {
-        api::lua_pushlstring(
+        compat::lua_pushlstring(
             l,
             entry_file.as_ptr() as *const c_char,
-            entry_file.as_bytes().len(),
+            entry_file.len(),
         )
     };
-    unsafe { api::lua_setfield(l, -2, b"entry_file\0".as_ptr() as *const c_char) };
+    unsafe { lua::lua_setfield(l, -2, c"entry_file".as_ptr() as *const c_char) };
 
     let entry_dir = entry_path
         .parent()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| ".".to_string());
     unsafe {
-        api::lua_pushlstring(
+        compat::lua_pushlstring(
             l,
             entry_dir.as_ptr() as *const c_char,
-            entry_dir.as_bytes().len(),
+            entry_dir.len(),
         )
     };
-    unsafe { api::lua_setfield(l, -2, b"entry_dir\0".as_ptr() as *const c_char) };
+    unsafe { lua::lua_setfield(l, -2, c"entry_dir".as_ptr() as *const c_char) };
 
-    unsafe { api::lua_setglobal(l, b"runtime\0".as_ptr() as *const c_char) };
+    unsafe { lua::lua_setglobal(l, c"runtime".as_ptr() as *const c_char) };
 
-    unsafe { api::lua_getglobal(l, b"warn\0".as_ptr() as *const c_char) };
-    if unsafe { api::lua_type(l, -1) } == api::LUA_TNIL {
-        unsafe { api::lua_settop(l, -2) };
-        unsafe { api::lua_pushcfunction(l, nicy_runtime_warn) };
-        unsafe { api::lua_setglobal(l, b"warn\0".as_ptr() as *const c_char) };
+    unsafe { lua::lua_getglobal(l, c"warn".as_ptr() as *const c_char) };
+    if unsafe { lua::lua_type(l, -1) } == lua::LUA_TNIL {
+        unsafe { lua::lua_settop(l, -2) };
+        unsafe { lua::lua_pushcfunction(l, nicy_runtime_warn) };
+        unsafe { lua::lua_setglobal(l, c"warn".as_ptr() as *const c_char) };
     } else {
-        unsafe { api::lua_settop(l, -2) };
+        unsafe { lua::lua_settop(l, -2) };
     }
 }
 
 // ── OS library extensions ───────────────────────────────────────
 
 unsafe extern "C-unwind" fn os_exit(l: *mut LuauState) -> c_int {
-    let code = if unsafe { api::lua_gettop(l) } >= 1 {
+    let code = if unsafe { lua::lua_gettop(l) } >= 1 {
         unsafe { lua::lua_tonumber(l, 1) as i32 }
     } else {
         0
@@ -679,39 +545,39 @@ unsafe extern "C-unwind" fn os_exit(l: *mut LuauState) -> c_int {
 }
 
 unsafe extern "C-unwind" fn os_getenv(l: *mut LuauState) -> c_int {
-    let name_ptr = unsafe { api::luaL_checkstring(l, 1) };
+    let name_ptr = unsafe { lauxlib::luaL_checkstring(l, 1) };
     if name_ptr.is_null() {
-        unsafe { api::lua_pushnil(l) };
+        unsafe { lua::lua_pushnil(l) };
         return 1;
     }
     let name = unsafe { CStr::from_ptr(name_ptr) }.to_string_lossy();
     match std::env::var_os(&*name) {
         Some(val) => {
             let val_str = val.to_string_lossy();
-            unsafe { api::lua_pushlstring(l, val_str.as_ptr() as *const c_char, val_str.len()) };
+            unsafe { compat::lua_pushlstring(l, val_str.as_ptr() as *const c_char, val_str.len()) };
         }
-        None => unsafe { api::lua_pushnil(l) },
+        None => unsafe { lua::lua_pushnil(l) },
     }
     1
 }
 
 unsafe extern "C-unwind" fn os_remove(l: *mut LuauState) -> c_int {
-    let path_ptr = unsafe { api::luaL_checkstring(l, 1) };
+    let path_ptr = unsafe { lauxlib::luaL_checkstring(l, 1) };
     if path_ptr.is_null() {
-        unsafe { api::lua_pushboolean(l, 0) };
+        unsafe { lua::lua_pushboolean(l, 0) };
         return 1;
     }
     let path = unsafe { CStr::from_ptr(path_ptr) }.to_string_lossy();
     let success = fs::remove_file(&*path).is_ok() || fs::remove_dir(&*path).is_ok();
-    unsafe { api::lua_pushboolean(l, if success { 1 } else { 0 }) };
+    unsafe { lua::lua_pushboolean(l, if success { 1 } else { 0 }) };
     1
 }
 
 unsafe extern "C-unwind" fn os_rename(l: *mut LuauState) -> c_int {
-    let old_ptr = unsafe { api::luaL_checkstring(l, 1) };
-    let new_ptr = unsafe { api::luaL_checkstring(l, 2) };
+    let old_ptr = unsafe { lauxlib::luaL_checkstring(l, 1) };
+    let new_ptr = unsafe { lauxlib::luaL_checkstring(l, 2) };
     if old_ptr.is_null() || new_ptr.is_null() {
-        unsafe { api::lua_pushboolean(l, 0) };
+        unsafe { lua::lua_pushboolean(l, 0) };
         return 1;
     }
     let old_path = unsafe { CStr::from_ptr(old_ptr) }
@@ -721,12 +587,12 @@ unsafe extern "C-unwind" fn os_rename(l: *mut LuauState) -> c_int {
         .to_string_lossy()
         .to_string();
     let success = fs::rename(&old_path, &new_path).is_ok();
-    unsafe { api::lua_pushboolean(l, if success { 1 } else { 0 }) };
+    unsafe { lua::lua_pushboolean(l, if success { 1 } else { 0 }) };
     1
 }
 
 unsafe extern "C-unwind" fn os_sleep(l: *mut LuauState) -> c_int {
-    let ms = if unsafe { api::lua_gettop(l) } >= 1 {
+    let ms = if unsafe { lua::lua_gettop(l) } >= 1 {
         unsafe { lauxlib::luaL_checknumber(l, 1) as u64 }
     } else {
         0
@@ -751,11 +617,12 @@ unsafe extern "C-unwind" fn os_tmpname(l: *mut LuauState) -> c_int {
         counter
     );
     let full_path = tmp.join(&name);
+    let path_str = full_path.to_string_lossy();
     unsafe {
-        api::lua_pushlstring(
+        compat::lua_pushlstring(
             l,
-            full_path.to_string_lossy().as_ptr() as *const c_char,
-            full_path.to_string_lossy().len(),
+            path_str.as_ptr() as *const c_char,
+            path_str.len(),
         )
     };
     1
@@ -764,27 +631,27 @@ unsafe extern "C-unwind" fn os_tmpname(l: *mut LuauState) -> c_int {
 /// Extend the standard `os` library with additional functions.
 /// Must be called AFTER luaL_openlibs so that the `os` table already exists.
 unsafe fn extend_os_library(l: *mut LuauState) {
-    unsafe { api::lua_getglobal(l, b"os\0".as_ptr() as *const c_char) };
+    unsafe { lua::lua_getglobal(l, c"os".as_ptr() as *const c_char) };
 
-    unsafe { api::lua_pushcfunction(l, os_exit) };
-    unsafe { api::lua_setfield(l, -2, b"exit\0".as_ptr() as *const c_char) };
+    unsafe { lua::lua_pushcfunction(l, os_exit) };
+    unsafe { lua::lua_setfield(l, -2, c"exit".as_ptr() as *const c_char) };
 
-    unsafe { api::lua_pushcfunction(l, os_getenv) };
-    unsafe { api::lua_setfield(l, -2, b"getenv\0".as_ptr() as *const c_char) };
+    unsafe { lua::lua_pushcfunction(l, os_getenv) };
+    unsafe { lua::lua_setfield(l, -2, c"getenv".as_ptr() as *const c_char) };
 
-    unsafe { api::lua_pushcfunction(l, os_remove) };
-    unsafe { api::lua_setfield(l, -2, b"remove\0".as_ptr() as *const c_char) };
+    unsafe { lua::lua_pushcfunction(l, os_remove) };
+    unsafe { lua::lua_setfield(l, -2, c"remove".as_ptr() as *const c_char) };
 
-    unsafe { api::lua_pushcfunction(l, os_rename) };
-    unsafe { api::lua_setfield(l, -2, b"rename\0".as_ptr() as *const c_char) };
+    unsafe { lua::lua_pushcfunction(l, os_rename) };
+    unsafe { lua::lua_setfield(l, -2, c"rename".as_ptr() as *const c_char) };
 
-    unsafe { api::lua_pushcfunction(l, os_sleep) };
-    unsafe { api::lua_setfield(l, -2, b"sleep\0".as_ptr() as *const c_char) };
+    unsafe { lua::lua_pushcfunction(l, os_sleep) };
+    unsafe { lua::lua_setfield(l, -2, c"sleep".as_ptr() as *const c_char) };
 
-    unsafe { api::lua_pushcfunction(l, os_tmpname) };
-    unsafe { api::lua_setfield(l, -2, b"tmpname\0".as_ptr() as *const c_char) };
+    unsafe { lua::lua_pushcfunction(l, os_tmpname) };
+    unsafe { lua::lua_setfield(l, -2, c"tmpname".as_ptr() as *const c_char) };
 
-    unsafe { api::lua_pop(l, 1) };
+    unsafe { lua::lua_pop(l, 1) };
 }
 
 // ── collectgarbage implementation ──────────────────────────────────
@@ -799,7 +666,7 @@ const LUA_GCSTEP: c_int = 6;
 
 unsafe extern "C-unwind" fn nicy_collectgarbage(l: *mut LuauState) -> c_int {
     let result = catch_unwind(AssertUnwindSafe(|| unsafe {
-        let opt_ptr = api::luaL_checkstring(l, 1);
+        let opt_ptr = lauxlib::luaL_checkstring(l, 1);
         if opt_ptr.is_null() {
             return Err("invalid option".to_string());
         }
@@ -819,7 +686,7 @@ unsafe extern "C-unwind" fn nicy_collectgarbage(l: *mut LuauState) -> c_int {
             }
             "isrunning" => {
                 let running = lua::lua_gc(l, LUA_GCISRUNNING, 0);
-                api::lua_pushboolean(l, if running != 0 { 1 } else { 0 });
+                lua::lua_pushboolean(l, if running != 0 { 1 } else { 0 });
                 Ok(1)
             }
             "stop" => {
@@ -831,13 +698,13 @@ unsafe extern "C-unwind" fn nicy_collectgarbage(l: *mut LuauState) -> c_int {
                 Ok(0)
             }
             "step" => {
-                let size = if api::lua_gettop(l) >= 2 {
+                let size = if lua::lua_gettop(l) >= 2 {
                     (lauxlib::luaL_checkinteger_(l, 2)) as c_int
                 } else {
                     100 // default step size
                 };
                 let result = lua::lua_gc(l, LUA_GCSTEP, size);
-                api::lua_pushboolean(l, if result != 0 { 1 } else { 0 });
+                lua::lua_pushboolean(l, if result != 0 { 1 } else { 0 });
                 Ok(1)
             }
             _ => Err(format!("invalid option '{}'", opt)),
@@ -848,8 +715,8 @@ unsafe extern "C-unwind" fn nicy_collectgarbage(l: *mut LuauState) -> c_int {
         Ok(Ok(n)) => n,
         Ok(Err(msg)) => unsafe {
             ErrorReporter::warn(&format!("collectgarbage: {}", msg));
-            api::lua_pushnil(l);
-            api::lua_pushlstring(l, msg.as_ptr() as *const c_char, msg.as_bytes().len());
+            lua::lua_pushnil(l);
+            compat::lua_pushlstring(l, msg.as_ptr() as *const c_char, msg.len());
             2
         },
         Err(p) => unsafe {
@@ -858,8 +725,8 @@ unsafe extern "C-unwind" fn nicy_collectgarbage(l: *mut LuauState) -> c_int {
                 context: "collectgarbage",
                 payload: msg.clone(),
             });
-            api::lua_pushnil(l);
-            api::lua_pushlstring(l, msg.as_ptr() as *const c_char, msg.as_bytes().len());
+            lua::lua_pushnil(l);
+            compat::lua_pushlstring(l, msg.as_ptr() as *const c_char, msg.len());
             2
         },
     }
@@ -868,12 +735,14 @@ unsafe extern "C-unwind" fn nicy_collectgarbage(l: *mut LuauState) -> c_int {
 /// Inject `collectgarbage` as a global function.
 /// Luau's luaL_openlibs does NOT include collectgarbage, so we add it manually.
 unsafe fn extend_collectgarbage(l: *mut LuauState) {
-    unsafe { api::lua_pushcfunction(l, nicy_collectgarbage) };
-    unsafe { api::lua_setglobal(l, b"collectgarbage\0".as_ptr() as *const c_char) };
+    unsafe { lua::lua_pushcfunction(l, nicy_collectgarbage) };
+    unsafe { lua::lua_setglobal(l, c"collectgarbage".as_ptr() as *const c_char) };
 }
 
+/// # Safety
+/// Caller must ensure `path_ptr` is a valid, non-null C string pointer.
 #[unsafe(no_mangle)]
-pub extern "C" fn nicy_start(path_ptr: *const c_char) {
+pub unsafe extern "C" fn nicy_start(path_ptr: *const c_char) {
     error::auto_init_logging();
     if let Err(p) = catch_unwind(AssertUnwindSafe(|| {
         if path_ptr.is_null() {
@@ -960,13 +829,13 @@ pub extern "C" fn nicy_start(path_ptr: *const c_char) {
         };
 
         unsafe {
-            let l = api::luaL_newstate();
+            let l = lauxlib::luaL_newstate();
             if l.is_null() {
                 ErrorReporter::fatal(&NicyError::runtime_error("Failed to create Luau state"));
                 return;
             }
 
-            api::luaL_openlibs(l);
+            lualib::luaL_openlibs(l);
             // Extend the standard os library with native functions
             extend_os_library(l);
             // Inject collectgarbage global function (not included by luaL_openlibs in Luau)
@@ -974,6 +843,7 @@ pub extern "C" fn nicy_start(path_ptr: *const c_char) {
             let entry_jit_enabled = !code_is_bytecode
                 && entry_native_requested
                 && require_resolver::ensure_codegen_context(l);
+            task_scheduler::mark_current_state_valid(l);
             task_scheduler::init(l);
             push_nicy_table(l, &entry_path);
             require_resolver::install_require(l);
@@ -982,7 +852,7 @@ pub extern "C" fn nicy_start(path_ptr: *const c_char) {
                     "Failed to init runtime: {}",
                     e
                 )));
-                api::lua_close(l);
+                lua::lua_close(l);
                 return;
             }
             if let Err(e) = require_resolver::set_entry_jit(l, entry_jit_enabled) {
@@ -991,7 +861,7 @@ pub extern "C" fn nicy_start(path_ptr: *const c_char) {
                     e
                 )));
                 require_resolver::shutdown_runtime(l);
-                api::lua_close(l);
+                lua::lua_close(l);
                 return;
             }
 
@@ -1012,7 +882,7 @@ pub extern "C" fn nicy_start(path_ptr: *const c_char) {
                     0,
                 )
             } else {
-                api::luaL_loadbuffer(
+                compat::luaL_loadbuffer(
                     l,
                     code_bytes.as_ptr() as *const c_char,
                     code_bytes.len(),
@@ -1022,7 +892,7 @@ pub extern "C" fn nicy_start(path_ptr: *const c_char) {
             if load_status != 0 {
                 ErrorReporter::report_lua_error(l, "load");
                 require_resolver::shutdown_runtime(l);
-                api::lua_close(l);
+                lua::lua_close(l);
                 return;
             }
 
@@ -1040,7 +910,7 @@ pub extern "C" fn nicy_start(path_ptr: *const c_char) {
                     e
                 )));
                 require_resolver::shutdown_runtime(l);
-                api::lua_close(l);
+                lua::lua_close(l);
                 return;
             }
 
@@ -1048,7 +918,7 @@ pub extern "C" fn nicy_start(path_ptr: *const c_char) {
             let _err_handler_ref = install_error_handler(l);
 
             task_scheduler::schedule_main_thread(l);
-            api::lua_settop(l, -2);
+            lua::lua_settop(l, -2);
 
             task_scheduler::run_until_idle(l);
 
@@ -1062,26 +932,29 @@ pub extern "C" fn nicy_start(path_ptr: *const c_char) {
             // FIX (LEAK-2): Remove nicy_ext_cache table from registry.
             // This table is created by get_or_create_extension_cache_table and
             // persists across runs if not cleaned up.
-            api::lua_pushnil(l);
-            api::lua_setfield(
+            lua::lua_pushnil(l);
+            lua::lua_setfield(
                 l,
-                api::LUA_REGISTRYINDEX,
-                b"nicy_ext_cache\0".as_ptr() as *const c_char,
+                lua::LUA_REGISTRYINDEX,
+                c"nicy_ext_cache".as_ptr() as *const c_char,
             );
 
             require_resolver::shutdown_all_globals(l);
             task_scheduler::shutdown_scheduler(l);
+            task_scheduler::mark_current_state_invalid();
             shutdown_loaded_libs();
             std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
-            api::lua_close(l);
+            lua::lua_close(l);
         }
     })) {
         log_panic("nicy_start", p);
     }
 }
 
+/// # Safety
+/// Caller must ensure `code_ptr` is a valid, non-null C string pointer.
 #[unsafe(no_mangle)]
-pub extern "C" fn nicy_eval(code_ptr: *const c_char) {
+pub unsafe extern "C" fn nicy_eval(code_ptr: *const c_char) {
     if let Err(p) = catch_unwind(AssertUnwindSafe(|| {
         if code_ptr.is_null() {
             ErrorReporter::fatal(&NicyError::panic_error("nicy_eval", "code_ptr is null"));
@@ -1098,7 +971,7 @@ pub extern "C" fn nicy_eval(code_ptr: *const c_char) {
         };
 
         unsafe {
-            let l = api::luaL_newstate();
+            let l = lauxlib::luaL_newstate();
             if l.is_null() {
                 ErrorReporter::fatal(&NicyError::runtime_error(
                     "Failed to create Luau state for eval",
@@ -1106,12 +979,13 @@ pub extern "C" fn nicy_eval(code_ptr: *const c_char) {
                 return;
             }
 
-            api::luaL_openlibs(l);
+            lualib::luaL_openlibs(l);
             // Extend the standard os library with native functions
             extend_os_library(l);
             // Inject collectgarbage global function
             extend_collectgarbage(l);
 
+            task_scheduler::mark_current_state_valid(l);
             task_scheduler::init(l);
 
             let eval_path = PathBuf::from("eval");
@@ -1122,21 +996,21 @@ pub extern "C" fn nicy_eval(code_ptr: *const c_char) {
             push_nicy_table(l, &eval_path);
 
             let chunkname = b"eval\0";
-            let load_status = api::luaL_loadbuffer(
+            let load_status = compat::luaL_loadbuffer(
                 l,
                 code_str.as_ptr() as *const c_char,
-                code_str.as_bytes().len(),
+                code_str.len(),
                 chunkname.as_ptr() as *const c_char,
             );
 
             if load_status != 0 {
                 ErrorReporter::report_lua_error(l, "eval compile");
                 require_resolver::shutdown_runtime(l);
-                api::lua_close(l);
+                lua::lua_close(l);
                 return;
             }
 
-            let call_status = api::lua_pcall(l, 0, 0, 0);
+            let call_status = lua::lua_pcall(l, 0, 0, 0);
             if call_status != 0 {
                 ErrorReporter::report_lua_error(l, "eval");
             }
@@ -1144,26 +1018,29 @@ pub extern "C" fn nicy_eval(code_ptr: *const c_char) {
             task_scheduler::run_until_idle(l);
 
             // FIX (LEAK-2): Remove nicy_ext_cache table from registry.
-            api::lua_pushnil(l);
-            api::lua_setfield(
+            lua::lua_pushnil(l);
+            lua::lua_setfield(
                 l,
-                api::LUA_REGISTRYINDEX,
-                b"nicy_ext_cache\0".as_ptr() as *const c_char,
+                lua::LUA_REGISTRYINDEX,
+                c"nicy_ext_cache".as_ptr() as *const c_char,
             );
 
             require_resolver::shutdown_all_globals(l);
             task_scheduler::shutdown_scheduler(l);
+            task_scheduler::mark_current_state_invalid();
             shutdown_loaded_libs();
             std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
-            api::lua_close(l);
+            lua::lua_close(l);
         }
     })) {
         log_panic("nicy_eval", p);
     }
 }
 
+/// # Safety
+/// Caller must ensure `path_ptr` is a valid, non-null C string pointer.
 #[unsafe(no_mangle)]
-pub extern "C" fn nicy_compile(path_ptr: *const c_char) {
+pub unsafe extern "C" fn nicy_compile(path_ptr: *const c_char) {
     if let Err(p) = catch_unwind(AssertUnwindSafe(|| {
         if path_ptr.is_null() {
             ErrorReporter::fatal(&NicyError::panic_error("nicy_compile", "path_ptr is null"));
@@ -1246,4 +1123,93 @@ pub extern "C" fn nicy_luau_version() -> *const c_char {
                 .unwrap_or_else(|| CString::new("unknown luau").unwrap())
         })
         .as_ptr()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_native_directive() {
+        let (native, code) = strip_native_directive("--!native\nprint('hello')");
+        assert!(native);
+        assert_eq!(code, "print('hello')");
+    }
+
+    #[test]
+    fn test_no_native_directive() {
+        let (native, code) = strip_native_directive("print('hello')");
+        assert!(!native);
+        assert_eq!(code, "print('hello')");
+    }
+
+    #[test]
+    fn test_empty_source() {
+        let (native, code) = strip_native_directive("");
+        assert!(!native);
+        assert_eq!(code, "");
+    }
+
+    #[test]
+    fn test_parse_compiler_directives_native() {
+        let (d, code) = parse_compiler_directives("--!native\nreturn 1");
+        assert!(d.native);
+        assert_eq!(code, "return 1");
+    }
+
+    #[test]
+    fn test_parse_compiler_directives_optimize() {
+        let (d, code) = parse_compiler_directives("--!optimize 2\nreturn 1");
+        assert_eq!(d.optimization_level, 2);
+        assert!(!d.native);
+        assert_eq!(code, "return 1");
+    }
+
+    #[test]
+    fn test_parse_compiler_directives_multiple() {
+        let (d, code) = parse_compiler_directives(
+            "--!native\n--!optimize 2\n--!coverage\n--!profile\n--!typeinfo 1\nreturn 1",
+        );
+        assert!(d.native);
+        assert_eq!(d.optimization_level, 2);
+        assert!(d.coverage);
+        assert!(d.profile);
+        assert_eq!(d.type_info_level, 1);
+        assert_eq!(code, "return 1");
+    }
+
+    #[test]
+    fn test_parse_compiler_directives_skips_unknown() {
+        let (d, code) = parse_compiler_directives("--!strict\n--!native\nreturn 1");
+        // --!strict is unknown but still consumed as directive block
+        assert!(d.native);
+        assert_eq!(code, "return 1");
+    }
+
+    #[test]
+    fn test_parse_compiler_directives_no_directives() {
+        let (d, code) = parse_compiler_directives("return 1");
+        assert!(!d.native);
+        assert_eq!(d.optimization_level, 1);
+        assert_eq!(code, "return 1");
+    }
+
+    #[test]
+    fn test_parse_compiler_directives_optimize_clamp() {
+        let (d, _) = parse_compiler_directives("--!optimize 9\nreturn 1");
+        assert_eq!(d.optimization_level, 2); // clamped to max 2
+    }
+
+    #[test]
+    fn test_panic_payload_string() {
+        assert_eq!(panic_payload_to_string(Box::new("test message")), "test message");
+        assert_eq!(
+            panic_payload_to_string(Box::new(String::from("owned string"))),
+            "owned string"
+        );
+        assert_eq!(
+            panic_payload_to_string(Box::new(42i32)),
+            "non-string panic payload"
+        );
+    }
 }
