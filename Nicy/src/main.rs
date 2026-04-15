@@ -10,8 +10,7 @@ use libloading::{Library, Symbol};
 use std::env;
 use std::ffi::{CStr, CString};
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process;
+use std::path::PathBuf;
 
 fn print_help() {
     println!("nicy - The Ultimate Luau Runtime");
@@ -63,13 +62,9 @@ fn preload_android_libcxx(errors: &mut Vec<String>) {
     ];
 
     for candidate in candidates {
-        let load_result = unsafe { Library::new(&candidate) };
-        match load_result {
-            Ok(lib) => {
-                std::mem::forget(lib);
-                return;
-            }
-            Err(err) => errors.push(format!("preload {}: {}", candidate.display(), err)),
+        if let Ok(lib) = unsafe { Library::new(&candidate) } {
+            std::mem::forget(lib);
+            return;
         }
     }
 }
@@ -123,29 +118,21 @@ fn load_nicy_lib() -> Result<Library, String> {
 
     #[cfg(target_os = "android")]
     for candidate in android_runtime_candidates(base) {
-        let load_result = unsafe { Library::new(&candidate) };
-        match load_result {
-            Ok(lib) => return Ok(lib),
-            Err(err) => errors.push(format!("android {}: {}", candidate.display(), err)),
+        if let Ok(lib) = unsafe { Library::new(&candidate) } {
+            return Ok(lib);
         }
     }
 
     for candidate in collect_local_library_candidates() {
-        let load_result = unsafe { Library::new(&candidate) };
-        match load_result {
-            Ok(lib) => return Ok(lib),
-            Err(err) => errors.push(format!("local {}: {}", candidate.display(), err)),
+        if let Ok(lib) = unsafe { Library::new(&candidate) } {
+            return Ok(lib);
         }
     }
 
-    let path_result = unsafe { Library::new(base) };
-    match path_result {
-        Ok(lib) => Ok(lib),
-        Err(err) => {
-            errors.push(format!("PATH {}: {}", base, err));
-            Err(errors.join("\n"))
-        }
-    }
+    unsafe { Library::new(base) }.map_err(|err| {
+        errors.push(format!("PATH {}: {}", base, err));
+        errors.join("\n")
+    })
 }
 
 fn load_symbol<'a, T>(
@@ -157,205 +144,144 @@ fn load_symbol<'a, T>(
         .map_err(|e| format!("failed to load symbol '{}': {}", pretty_name, e))
 }
 
-fn to_cstring_or_exit(value: &str, field_name: &str) -> CString {
-    match CString::new(value) {
-        Ok(v) => v,
-        Err(_) => {
-            eprintln!("[ERROR] Invalid {}: contains NUL byte.", field_name);
-            process::exit(1);
-        }
-    }
-}
-
-fn exit_with_library_error(details: &str) -> ! {
-    eprintln!(
-        "[FATAL] Failed to load runtime library '{}'.",
-        runtime_library_basename()
-    );
-    eprintln!("[FATAL] Attempt details:\n{}", details);
-    process::exit(1);
-}
-
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
         print_help();
-        return;
+        return Ok(());
     }
 
     let command = args[1].as_str();
 
-    unsafe {
-        match command {
-            "help" | "--help" | "-h" => print_help(),
-            "version" | "--version" | "-v" => println!("nicy 1.0.0-alpha"),
-            "runtime-version" | "--runtime-version" | "-rv" => {
-                let lib = match load_nicy_lib() {
-                    Ok(lib) => lib,
-                    Err(details) => exit_with_library_error(&details),
-                };
+    match command {
+        "help" | "--help" | "-h" => print_help(),
+        "version" | "--version" | "-v" => println!("nicy 1.0.0-alpha"),
+        "runtime-version" | "--runtime-version" | "-rv" => {
+            let lib = load_nicy_lib().map_err(|details| {
+                eprintln!(
+                    "[FATAL] Failed to load runtime library '{}'.\n[FATAL] Attempt details:\n{}",
+                    runtime_library_basename(),
+                    details
+                );
+                ""
+            })?;
 
-                let get_version: Symbol<unsafe extern "C" fn() -> *const std::os::raw::c_char> =
-                    match load_symbol(&lib, b"nicy_version\0", "nicy_version") {
-                        Ok(s) => s,
-                        Err(err) => {
-                            eprintln!("[FATAL] {}", err);
-                            process::exit(1);
-                        }
-                    };
+            let get_version: Symbol<unsafe extern "C" fn() -> *const std::os::raw::c_char> =
+                load_symbol(&lib, b"nicy_version\0", "nicy_version").map_err(|err| {
+                    eprintln!("[FATAL] {}", err);
+                    ""
+                })?;
 
-                let get_luau_version: Symbol<
-                    unsafe extern "C" fn() -> *const std::os::raw::c_char,
-                > = match load_symbol(&lib, b"nicy_luau_version\0", "nicy_luau_version") {
-                    Ok(s) => s,
-                    Err(err) => {
-                        eprintln!("[FATAL] {}", err);
-                        process::exit(1);
-                    }
-                };
+            let get_luau_version: Symbol<
+                unsafe extern "C" fn() -> *const std::os::raw::c_char,
+            > = load_symbol(&lib, b"nicy_luau_version\0", "nicy_luau_version").map_err(|err| {
+                eprintln!("[FATAL] {}", err);
+                ""
+            })?;
 
-                let engine_ptr = get_version();
-                let luau_ptr = get_luau_version();
+            let engine_ptr = unsafe { get_version() };
+            let luau_ptr = unsafe { get_luau_version() };
 
-                if engine_ptr.is_null() || luau_ptr.is_null() {
-                    eprintln!("[FATAL] runtime returned invalid version pointers");
-                    process::exit(1);
-                }
-
-                let engine_ver = CStr::from_ptr(engine_ptr).to_string_lossy();
-                let luau_ver = CStr::from_ptr(luau_ptr).to_string_lossy();
-                println!("Engine: {}", engine_ver);
-                println!("Luau: {}", luau_ver);
+            if engine_ptr.is_null() || luau_ptr.is_null() {
+                return Err("[FATAL] runtime returned invalid version pointers".into());
             }
-            "run" => {
-                if args.len() < 3 {
-                    eprintln!("[ERROR] Missing script file. Example: nicy run script.luau");
-                    process::exit(1);
-                }
-                execute_file(&args[2]);
+
+            let engine_ver = unsafe { CStr::from_ptr(engine_ptr) }.to_string_lossy();
+            let luau_ver = unsafe { CStr::from_ptr(luau_ptr) }.to_string_lossy();
+            println!("Engine: {}", engine_ver);
+            println!("Luau: {}", luau_ver);
+        }
+        "run" => {
+            if args.len() < 3 {
+                return Err("[ERROR] Missing script file. Example: nicy run script.luau".into());
             }
-            "eval" => {
-                if args.len() < 3 {
-                    eprintln!(
-                        "[ERROR] Missing code to evaluate. Example: nicy eval \"print('hello')\""
-                    );
-                    process::exit(1);
-                }
-                execute_eval(&args[2]);
+            execute_file(&args[2])?;
+        }
+        "eval" => {
+            if args.len() < 3 {
+                return Err(
+                    "[ERROR] Missing code to evaluate. Example: nicy eval \"print('hello')\""
+                        .into(),
+                );
             }
-            "compile" => {
-                if args.len() < 3 {
-                    eprintln!(
-                        "[ERROR] Missing script file to compile. Example: nicy compile script.luau"
-                    );
-                    process::exit(1);
-                }
-                execute_compile(&args[2]);
+            execute_eval(&args[2])?;
+        }
+        "compile" => {
+            if args.len() < 3 {
+                return Err(
+                    "[ERROR] Missing script file to compile. Example: nicy compile script.luau"
+                        .into(),
+                );
             }
-            _ => {
-                let path = Path::new(command);
-                if path.exists() {
-                    execute_file(command);
-                } else {
-                    eprintln!("[ERROR] Unknown command or file not found: '{}'", command);
-                    process::exit(1);
-                }
+            execute_compile(&args[2])?;
+        }
+        _ => {
+            let path = std::path::Path::new(command);
+            if path.exists() {
+                execute_file(command)?;
+            } else {
+                return Err(format!("[ERROR] Unknown command or file not found: '{}'", command).into());
             }
         }
     }
+
+    Ok(())
 }
 
-unsafe fn execute_file(script_rel_path: &str) {
-    let path = Path::new(script_rel_path);
+fn execute_file(script_rel_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let path = std::path::Path::new(script_rel_path);
     if !path.exists() {
-        eprintln!("[ERROR] File '{}' does not exist.", script_rel_path);
-        process::exit(1);
+        return Err(format!("[ERROR] File '{}' does not exist.", script_rel_path).into());
     }
 
-    let lib = match load_nicy_lib() {
-        Ok(lib) => lib,
-        Err(details) => exit_with_library_error(&details),
-    };
+    let lib = load_nicy_lib()?;
 
-    let script_path = match path.to_str() {
-        Some(v) => v,
-        None => {
-            eprintln!(
-                "[ERROR] Script path has invalid UTF-8: '{}'",
-                script_rel_path
-            );
-            process::exit(1);
-        }
-    };
+    let script_path = path
+        .to_str()
+        .ok_or_else(|| format!("[ERROR] Script path has invalid UTF-8: '{}'", script_rel_path))?;
 
-    let c_path = to_cstring_or_exit(script_path, "script path");
+    let c_path = CString::new(script_path)
+        .map_err(|_| "[ERROR] Invalid script path: contains NUL byte".to_string())?;
 
     let start: Symbol<unsafe extern "C" fn(*const std::os::raw::c_char)> =
-        match load_symbol(&lib, b"nicy_start\0", "nicy_start") {
-            Ok(s) => s,
-            Err(err) => {
-                eprintln!("[FATAL] {}", err);
-                process::exit(1);
-            }
-        };
+        load_symbol(&lib, b"nicy_start\0", "nicy_start")?;
 
     unsafe { start(c_path.as_ptr()) };
+    Ok(())
 }
 
-unsafe fn execute_eval(code: &str) {
-    let lib = match load_nicy_lib() {
-        Ok(lib) => lib,
-        Err(details) => exit_with_library_error(&details),
-    };
+fn execute_eval(code: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let lib = load_nicy_lib()?;
 
-    let c_code = to_cstring_or_exit(code, "eval code");
+    let c_code =
+        CString::new(code).map_err(|_| "[ERROR] Invalid eval code: contains NUL byte")?;
 
     let eval: Symbol<unsafe extern "C" fn(*const std::os::raw::c_char)> =
-        match load_symbol(&lib, b"nicy_eval\0", "nicy_eval") {
-            Ok(s) => s,
-            Err(err) => {
-                eprintln!("[FATAL] {}", err);
-                process::exit(1);
-            }
-        };
+        load_symbol(&lib, b"nicy_eval\0", "nicy_eval")?;
 
     unsafe { eval(c_code.as_ptr()) };
+    Ok(())
 }
 
-unsafe fn execute_compile(script_rel_path: &str) {
-    let path = Path::new(script_rel_path);
+fn execute_compile(script_rel_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let path = std::path::Path::new(script_rel_path);
     if !path.exists() {
-        eprintln!("[ERROR] File '{}' does not exist.", script_rel_path);
-        process::exit(1);
+        return Err(format!("[ERROR] File '{}' does not exist.", script_rel_path).into());
     }
 
-    let lib = match load_nicy_lib() {
-        Ok(lib) => lib,
-        Err(details) => exit_with_library_error(&details),
-    };
+    let lib = load_nicy_lib()?;
 
-    let script_path = match path.to_str() {
-        Some(v) => v,
-        None => {
-            eprintln!(
-                "[ERROR] Script path has invalid UTF-8: '{}'",
-                script_rel_path
-            );
-            process::exit(1);
-        }
-    };
+    let script_path = path
+        .to_str()
+        .ok_or_else(|| format!("[ERROR] Script path has invalid UTF-8: '{}'", script_rel_path))?;
 
-    let c_path = to_cstring_or_exit(script_path, "script path");
+    let c_path = CString::new(script_path)
+        .map_err(|_| "[ERROR] Invalid script path: contains NUL byte")?;
 
     let compile: Symbol<unsafe extern "C" fn(*const std::os::raw::c_char)> =
-        match load_symbol(&lib, b"nicy_compile\0", "nicy_compile") {
-            Ok(s) => s,
-            Err(err) => {
-                eprintln!("[FATAL] {}", err);
-                process::exit(1);
-            }
-        };
+        load_symbol(&lib, b"nicy_compile\0", "nicy_compile")?;
 
     unsafe { compile(c_path.as_ptr()) };
+    Ok(())
 }
