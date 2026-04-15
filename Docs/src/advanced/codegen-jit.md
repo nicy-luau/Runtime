@@ -46,20 +46,34 @@ end
 
 ## Platform Support
 
-| Platform | Architecture | CodeGen |
-|----------|-------------|---------|
-| Windows | x64 | ✅ Yes |
-| Windows | x86 | ✅ Yes |
-| Windows | ARM64 | ✅ Yes |
-| macOS | x64 | ✅ Yes |
-| macOS | ARM64 | ✅ Yes |
-| Linux | x64 | ✅ Yes |
-| Linux | ARM64 | ✅ Yes |
-| Linux | x86 | ✅ Yes (no vector4) |
-| Android | ARM64 | ❌ Disabled |
-| Android | ARMv7 | ❌ Disabled |
+### Feature Flags by Platform
 
-CodeGen is disabled on Android for stability reasons.
+NicyRuntime uses platform-specific feature flags to ensure ABI compatibility and stability. The following table shows which Luau features are enabled on each platform:
+
+| Platform | Architecture | CodeGen/JIT | Vector4 | Notes |
+|----------|-------------|-------------|---------|-------|
+| Windows | x64 | ✅ | ✅ | Full support |
+| Windows | ARM64 | ✅ | ✅ | Full support |
+| Windows | x86 | ✅ | ✅ | Full support |
+| macOS | x64 | ✅ | ✅ | Full support |
+| macOS | ARM64 | ✅ | ✅ | Full support |
+| Linux | x64 | ✅ | ✅ | Full support |
+| Linux | ARM64 | ✅ | ✅ | Full support |
+| Linux | x86 (32-bit) | ✅ | ❌ | TValue ABI mismatch — `lua_TValue` size differs on i686 |
+| Android | ARM64 | ❌ | ❌ | Disabled for stability — JIT can cause crashes on some devices |
+| Android | ARMv7 | ❌ | ❌ | Disabled for stability |
+
+### Why These Differences?
+
+**Vector4 (Linux x86)**: The `luau-vector4` feature is disabled on 32-bit Linux because of a static assertion failure: `sizeof(lua_TValue) == 24`. On i686, the TValue structure has a different size, causing ABI incompatibility with Luau bytecode compiled on other platforms.
+
+**CodeGen (Android)**: The `luau-codegen` feature is disabled on Android because LLVM JIT compilation can cause instability on certain Android devices, especially those with SELinux restrictions or limited memory.
+
+### What This Means for You
+
+- **`--!native` directive**: On platforms without CodeGen, this directive is silently ignored. Use `runtime.hasJIT(path)` to check if JIT is active for a specific file.
+- **Cross-platform bytecode**: Bytecode compiled with `--!native` on x64 will NOT run on x86 or ARM due to architecture-specific machine code.
+- **Vector4**: If your code uses `vector4` type, it will NOT work on Linux x86 (32-bit). Test on your target platform.
 
 ## Performance Impact
 

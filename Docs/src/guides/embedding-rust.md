@@ -2,6 +2,12 @@
 
 Embed NicyRuntime in a Rust application using FFI.
 
+> ⚠️ **Important**: `nicyruntime` is a `cdylib`, NOT an `rlib`. You have two options:
+> 1. **Dynamic loading** (recommended): Use `libloading` to load the library at runtime
+> 2. **Static linking**: Use `#[link(name = "nicyruntime")]` with the library in your library path
+>
+> Do NOT add `nicyruntime` as a Cargo dependency — this will fail with a crate type error.
+
 ## Prerequisites
 
 - Rust 1.75+

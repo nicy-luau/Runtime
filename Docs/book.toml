@@ -16,7 +16,7 @@ git-repository-url = "https://github.com/nicy-luau/Runtime"
 git-repository-icon = "fa-github"
 edit-url-template = "https://github.com/nicy-luau/Runtime/edit/main/Docs/{path}"
 additional-css = ["theme/css/custom.css"]
-site-url = "https://nicy-luau.github.io/Runtime/"
+site-url = "/Runtime/"
 
 [output.html.search]
 enable = true

@@ -82,8 +82,35 @@ local elapsed = task.wait(1.0)
 print(string.format("Waited %.3f seconds", elapsed))
 ```
 
-**Main thread**: runs the scheduler for the specified duration.
-**Spawned tasks**: yields the coroutine; scheduler resumes after delay.
+**Returns**: Actual elapsed time in seconds (float).
+
+### Main Thread vs Coroutine Behavior
+
+| Context | Behavior | CPU Usage |
+|---------|----------|-----------|
+| **Main thread** (entry script) | Synchronous busy-wait loop with `run_one_iteration()` | ⚠️ High (calls `std::thread::yield_now()`) |
+| **Spawned task** (via `task.spawn`) | Async yield to scheduler; coroutine is suspended | ✅ None (coroutine is parked) |
+
+### Limitations
+
+- **Minimum precision**: 1ms (internally rounded). Values < 0.001s are rounded up.
+- **Maximum timeout**: 10 years (implementation limit). Values exceeding this are capped.
+- **Main thread busy-wait**: When called from the main thread, `task.wait()` consumes CPU even with `yield_now()`. Use only for short waits; prefer `task.spawn` for long delays.
+- **Non-finite values**: `nil`, `NaN`, `Infinity`, and negative values are treated as 0 (immediate yield).
+
+### Example: Main Thread vs Task
+
+```luau
+-- Main thread: busy-wait (high CPU)
+print("Main thread waiting...")
+task.wait(1.0)  -- Blocks and consumes CPU
+
+-- Spawned task: async yield (no CPU)
+task.spawn(function()
+    print("Task waiting...")
+    task.wait(1.0)  -- Yields to scheduler, zero CPU
+end)
+```
 
 ## `task.cancel`
 
@@ -102,6 +129,31 @@ task.cancel(t)
 ```
 
 Returns `true` if cancelled, `false` if not found or already completed.
+
+### Cancellation by Type
+
+| Argument Type | Behavior |
+|---------------|----------|
+| **Thread** (from `task.spawn`) | Removes from all scheduler queues, clears pending timers, unreferences registry entry |
+| **Delay ID** (number from `task.delay`) | Removes timer entry, prevents function from firing |
+
+### Limitations
+
+- **Delay ID precision**: IDs are passed as `f64` (Lua numbers). IDs exceeding `2^53` (9,007,199,254,740,992) are rejected due to IEEE 754 precision loss. A warning is logged: `"task.cancel: id X exceeds safe integer range (2^53), ignoring"`.
+- **Silent failure**: Canceling a non-existent or already-completed task returns `false` without error. This is by design for safe cleanup.
+- **Thread reference**: The thread must have been registered with the scheduler (via `task.spawn`, `task.delay`, or explicit `task.wait`). Coroutines created via `coroutine.create` are not tracked.
+
+### Example: Delay ID Limit
+
+```luau
+-- This will fail silently with a warning
+local huge_id = 9007199254740993.0  -- Exceeds 2^53
+task.cancel(huge_id)  -- Returns false, warns: "id exceeds safe integer range"
+
+-- Normal usage (safe range)
+local id = task.delay(5.0, function() end)
+task.cancel(id)  -- Works correctly
+```
 
 ## Scheduler Behavior
 

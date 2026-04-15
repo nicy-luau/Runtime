@@ -30,7 +30,7 @@ Verbose output includes:
 
 ## Error Codes
 
-NicyRuntime extends standard Luau error codes with custom codes:
+NicyRuntime extends standard Luau error codes with custom codes for better error categorization.
 
 ### Standard Luau Codes
 
@@ -46,16 +46,41 @@ NicyRuntime extends standard Luau error codes with custom codes:
 
 ### Nicy-Specific Codes
 
-| Code | Name | Description |
-|------|------|-------------|
-| 100 | `NICY_ERR_MODULE_NOT_FOUND` | Require failed to resolve module |
-| 101 | `NICY_ERR_MODULE_LOAD_FAILED` | Module found but failed to load/compile |
-| 102 | `NICY_ERR_MODULE_INIT_FAILED` | Module loaded but init function failed |
-| 103 | `NICY_ERR_CYCLIC_REQUIRE` | Cyclic dependency detected |
-| 104 | `NICY_ERR_TASK_CRASH` | Task/coroutine crashed |
-| 105 | `NICY_ERR_NATIVE_CRASH` | Native DLL crashed |
-| 106 | `NICY_ERR_TIMEOUT` | Operation timed out |
-| 107 | `NICY_ERR_PERMISSION_DENIED` | Access denied |
+| Code | Name | Description | Luau Equivalent |
+|------|------|-------------|-----------------|
+| 100 | `NICY_ERR_MODULE_NOT_FOUND` | Require failed to resolve module | `LUA_ERRFILE` |
+| 101 | `NICY_ERR_MODULE_LOAD_FAILED` | Module found but failed to load/compile | `LUA_ERRSYNTAX` |
+| 102 | `NICY_ERR_MODULE_INIT_FAILED` | Module loaded but init function failed | `LUA_ERRRUN` |
+| 103 | `NICY_ERR_CYCLIC_REQUIRE` | Cyclic dependency detected | `LUA_ERRRUN` |
+| 104 | `NICY_ERR_TASK_CRASH` | Task/coroutine crashed | `LUA_ERRRUN` |
+| 105 | `NICY_ERR_NATIVE_CRASH` | Native DLL crashed | `LUA_ERRRUN` |
+| 106 | `NICY_ERR_TIMEOUT` | Operation timed out | `LUA_ERRRUN` |
+| 107 | `NICY_ERR_PERMISSION_DENIED` | Access denied | `LUA_ERRFILE` |
+
+### Accessing Error Codes via FFI
+
+When using NicyRuntime via FFI (C, C++, Rust, etc.), errors are returned as integer codes. The mapping is:
+
+```c
+// In your C/C++ code:
+int error_code = nicy_start("script.luau");
+
+switch (error_code) {
+    case 0:   // LUA_OK
+        printf("Success\n");
+        break;
+    case 100: // NICY_ERR_MODULE_NOT_FOUND
+        fprintf(stderr, "Module not found\n");
+        break;
+    case 103: // NICY_ERR_CYCLIC_REQUIRE
+        fprintf(stderr, "Cyclic require detected\n");
+        break;
+    // ... etc
+}
+```
+
+> 🔧 **Future**: A `nicy_error_code()` function will be exposed to convert error objects to codes.
+> Currently, error codes are embedded in the error message returned by `lua_tostring()`.
 
 ## Error Colors
 

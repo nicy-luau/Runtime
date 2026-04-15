@@ -35,6 +35,7 @@ C:\NicyRuntime\
 - **Asynchronous Task Scheduler** — Cooperative multitasking with `task.spawn`, `task.defer`, `task.delay`, `task.wait`, and `task.cancel`.
 - **Cross-Platform** — Builds for Windows, macOS, Linux, and Android (Termux).
 - **Luau CodeGen/JIT** — Add `--!native` on the first line of a file to enable native bytecode compilation (disabled on Android for stability).
+- **88 FFI Functions** — Complete C-ABI API for embedding in any language (C, C++, Python, C#, Node.js, Rust via libloading).
 
 ## Luau API
 
@@ -100,14 +101,42 @@ Plus full Lua C API wrappers (`nicy_lua_*`, `nicy_luaL_*`).
 
 ## Embedding nicyruntime in Other Projects
 
-Use the `cdylib` directly via FFI from C, C++, Python, C#, Node.js, etc.
+The `nicyruntime` library is a `cdylib` designed for **dynamic loading via FFI** from any language that supports calling native libraries.
 
-Add to your Rust project's `Cargo.toml`:
+### Supported Languages
 
-```toml
-[dependencies]
-nicyruntime = { path = "path/to/Runtime" }
+| Language | Method | Example |
+|----------|--------|---------|
+| C/C++ | `dlopen` / `LoadLibrary` | See [Embedding in C](Docs/src/guides/embedding-c.md) |
+| Rust | `libloading` | See [Embedding in Rust](Docs/src/guides/embedding-rust.md) |
+| Python | `ctypes` / `cffi` | Load `nicyruntime.dll` / `libnicyruntime.so` |
+| C# | `DllImport` / `NativeLibrary` | Use `[DllImport("nicyruntime")]` |
+| Node.js | `ffi-napi` | Load via `ffi.Library('nicyruntime', ...)` |
+
+### Quick Example (Rust with libloading)
+
+```rust
+use libloading::Library;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let lib = Library::new("nicyruntime.dll")?;
+    
+    unsafe {
+        let nicy_start: libloading::Symbol<
+            unsafe extern "C" fn(*const std::os::raw::c_char)
+        > = lib.get(b"nicy_start")?;
+
+        let script = std::ffi::CString::new("myscript.luau")?;
+        nicy_start(script.as_ptr());
+    }
+    
+    Ok(())
+}
 ```
+
+> ⚠️ **Important**: Do NOT add `nicyruntime` as a direct Cargo dependency.
+> The library uses `crate-type = ["cdylib"]`, which is incompatible with Rust's static linkage.
+> Always load it dynamically via `libloading`, `dlopen`, or equivalent.
 
 ## License
 

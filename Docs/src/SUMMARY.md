@@ -49,6 +49,12 @@
 - [Cross-Platform](advanced/cross-platform.md)
 - [Performance Tips](advanced/performance-tips.md)
 
+# Testing
+
+- [Running Tests](testing/running-tests.md)
+- [Test Structure](testing/test-structure.md)
+- [Coverage](testing/coverage.md)
+
 ---
 
 [Troubleshooting](troubleshooting.md)

@@ -74,7 +74,7 @@ The library is structured into several modules:
 
 ## 🛠️ Exported C-ABI Methods (Host API)
 
-The `nicyruntime` shared library exposes the following `extern "C"` functions. This makes it incredibly easy to embed the Nicy Luau Runtime into any programming language (C#, Python, Node.js, etc.).
+The `nicyruntime` shared library exposes **88 functions** with `extern "C"` compatibility. This includes 5 core host functions and 83 Lua C API wrappers for complete state management.
 
 * **`void nicy_start(const char* filepath)`** **The Main Engine:** Initializes the complete runtime environment, sets up the task scheduler and custom `require` resolver, and executes the `.luau` script at the specified path.
 

@@ -148,8 +148,25 @@ fn canonicalize_existing(path: PathBuf) -> Result<PathBuf, String> {
     if !path.exists() {
         return Err(format!("path does not exist: {}", path.display()));
     }
-    fs::canonicalize(&path)
-        .map_err(|e| format!("failed to canonicalize '{}': {}", path.display(), e))
+
+    // FIX (Windows): fs::canonicalize returns the \\?\\  (extended-length) prefix
+    // that LoadLibraryW does NOT accept => ACCESS_DENIED when loading .ndyn files.
+    // It can also fail with PermissionDenied on paths through junctions / AppData.
+    // Strategy: try canonicalize, fall back to original path on error, then strip prefix.
+    let canonical = match fs::canonicalize(&path) {
+        Ok(p) => p,
+        Err(_) => path,   // graceful fallback — keeps the original absolute path
+    };
+
+    #[cfg(windows)]
+    {
+        let s = canonical.to_string_lossy();
+        if s.starts_with(r"\\?\\\\") {
+            return Ok(PathBuf::from(&s[4..]));
+        }
+    }
+
+    Ok(canonical)
 }
 
 fn resolve_loadlib_base(

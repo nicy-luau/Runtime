@@ -5,6 +5,37 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Detect host target for cross-compilation detection
+$hostTarget = if ($IsWindows) {
+    $arch = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant()
+    switch ($arch) {
+        "x64" { "x86_64-pc-windows-msvc" }
+        "arm64" { "aarch64-pc-windows-msvc" }
+        "x86" { "i686-pc-windows-msvc" }
+        default { "unknown" }
+    }
+} elseif ($IsMacOS) {
+    $arch = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant()
+    switch ($arch) {
+        "x64" { "x86_64-apple-darwin" }
+        "arm64" { "aarch64-apple-darwin" }
+        default { "unknown" }
+    }
+} elseif ($IsLinux) {
+    if (Get-Command "rustc" -ErrorAction SilentlyContinue) {
+        $hostLine = rustc -vV | Select-String "^host:\s+"
+        if ($null -ne $hostLine) {
+            ($hostLine.ToString() -replace "^host:\s+", "").Trim()
+        } else {
+            "unknown"
+        }
+    } else {
+        "unknown"
+    }
+} else {
+    "unknown"
+}
+
 $TargetMap = @{
     "android-arm" = "aarch64-linux-android"
     "android-v7"  = "armv7-linux-androideabi"
@@ -94,12 +125,31 @@ function Invoke-Build([string]$name, [string]$rustTarget, [string]$kind, [switch
     }
 
     Assert-Command "cargo"
+
+    # Detect if cross-compilation is needed
+    $needsCrossCompile = -not $useDefaultTarget -and ($rustTarget -ne $hostTarget)
+
     if ($useDefaultTarget) {
+        # Native build — no cross-compilation needed
+        Write-Host "  [native build]" -ForegroundColor Gray
         cargo build --release --manifest-path $manifest --target-dir target
     } elseif ($name -like "win-*") {
+        # Windows cross-compile (doesn't need zig)
         cargo build --release --target $rustTarget --manifest-path $manifest --target-dir target
+    } elseif ($needsCrossCompile) {
+        # Cross-compile for Linux/macOS — requires zig
+        if (Get-Command zig -ErrorAction SilentlyContinue) {
+            Write-Host "  [cross-compile via zig]" -ForegroundColor Gray
+            cargo zigbuild --release --target $rustTarget --manifest-path $manifest --target-dir target
+        } else {
+            Write-Host "Aviso: zig nao encontrado, tentando build nativo" -ForegroundColor Yellow
+            Write-Host "  Para cross-compilation, instale zig: https://ziglang.org/download/" -ForegroundColor Yellow
+            cargo build --release --target $rustTarget --manifest-path $manifest --target-dir target
+        }
     } else {
-        cargo zigbuild --release --target $rustTarget --manifest-path $manifest --target-dir target
+        # Same target as host — native build
+        Write-Host "  [native build]" -ForegroundColor Gray
+        cargo build --release --target $rustTarget --manifest-path $manifest --target-dir target
     }
 
     if ($LASTEXITCODE -ne 0) {
