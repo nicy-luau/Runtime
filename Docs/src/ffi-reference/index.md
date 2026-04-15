@@ -1,6 +1,6 @@
 # FFI C-ABI Reference
 
-NicyRuntime exports **88 functions** with a stable `extern "C-unwind"` ABI. This includes **5 core runtime functions** (`nicy_start`, `nicy_eval`, `nicy_compile`, `nicy_version`, `nicy_luau_version`) and **83 Lua C API wrappers** for complete Luau state management.
+NicyRuntime exports **90 functions** with a stable `extern "C-unwind"` ABI. This includes **5 core runtime functions** (`nicy_start`, `nicy_eval`, `nicy_compile`, `nicy_version`, `nicy_luau_version`), **83 Lua C API wrappers** for complete Luau state management, and **2 error code utilities**.
 
 ## Header File
 
@@ -140,3 +140,28 @@ All functions use `extern "C-unwind"`, allowing exceptions to propagate across F
 | `nicy_luaL_newmetatable` | `c_int(*l, tname: *const c_char)` |
 | `nicy_luaL_getmetatable` | `c_int(*l, tname: *const c_char)` |
 | `nicy_luaL_error` | `c_int(*l, msg: *const c_char)` |
+
+## Error Code Utilities
+
+These functions help FFI integrators work with NicyRuntime's error codes:
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `nicy_error_name` | `*const c_char(code: c_int)` | Convert error code to name string (e.g., 103 → `"NICY_ERR_CYCLIC_REQUIRE"`) |
+| `nicy_is_nicy_error` | `c_int(code: c_int)` | Returns 1 if code is Nicy-specific (100+), 0 if standard Luau |
+
+### Example (C)
+
+```c
+int err = nicy_start("script.luau");
+if (err != 0) {
+    const char* name = nicy_error_name(err);
+    int is_nicy = nicy_is_nicy_error(err);
+    
+    if (is_nicy) {
+        fprintf(stderr, "Nicy error: %s\n", name);
+    } else {
+        fprintf(stderr, "Luau error: %s\n", name);
+    }
+}
+```

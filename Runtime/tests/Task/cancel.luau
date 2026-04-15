@@ -32,8 +32,20 @@ return {
         name = "rejects ID above 2^53 (precision loss)",
         run = function()
             local MAX_SAFE = 9007199254740992
-            local result = task.cancel(MAX_SAFE + 1)
-            expect.eq(result, false, "cancel rejects ID above 2^53")
+            local success, err = pcall(function()
+                task.cancel(MAX_SAFE + 1)
+            end)
+            expect.eq(success, false, "cancel throws error for ID above 2^53")
+            expect.ok(err:find("exceeds safe integer range"), "error message mentions 2^53 limit")
+        end,
+    },
+    {
+        name = "accepts ID at exact 2^53 boundary",
+        run = function()
+            local MAX_SAFE = 9007199254740992
+            -- Should not throw, but returns false since no such delay exists
+            local result = task.cancel(MAX_SAFE)
+            expect.eq(result, false, "cancel(2^53) returns false (no such delay)")
         end,
     },
     {

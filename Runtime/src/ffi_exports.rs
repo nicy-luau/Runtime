@@ -7,6 +7,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
 */
 
 use super::LuauState;
+use crate::error::error_codes;
 use mlua_sys::luau::compat;
 use mlua_sys::luau::lauxlib;
 use mlua_sys::luau::lua;
@@ -520,3 +521,25 @@ pub unsafe extern "C-unwind" fn nicy_lua_setfenv(l: *mut LuauState, idx: c_int) 
 }
 
 // === debug functions removed (Luau does not support them) ===
+
+// === Error code utilities for FFI integrators ===
+
+/// Convert an error code number to its human-readable name.
+/// Useful for FFI integrators who receive numeric error codes.
+///
+/// # Examples (C)
+/// ```c
+/// const char* name = nicy_error_name(103);
+/// // Returns: "NICY_ERR_CYCLIC_REQUIRE"
+/// ```
+#[unsafe(no_mangle)]
+pub unsafe extern "C-unwind" fn nicy_error_name(code: c_int) -> *const c_char {
+    error_codes::code_to_name(code).as_ptr() as *const c_char
+}
+
+/// Check if an error code is a Nicy-specific error (100+ range).
+/// Returns 1 if nicy-specific, 0 if standard Luau code.
+#[unsafe(no_mangle)]
+pub unsafe extern "C-unwind" fn nicy_is_nicy_error(code: c_int) -> c_int {
+    if code >= 100 { 1 } else { 0 }
+}

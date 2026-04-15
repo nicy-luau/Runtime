@@ -74,7 +74,7 @@ The library is structured into several modules:
 
 ## 🛠️ Exported C-ABI Methods (Host API)
 
-The `nicyruntime` shared library exposes **88 functions** with `extern "C"` compatibility. This includes 5 core host functions and 83 Lua C API wrappers for complete state management.
+The `nicyruntime` shared library exposes **90 functions** with `extern "C"` compatibility. This includes 5 core host functions, 83 Lua C API wrappers, and 2 error code utilities.
 
 * **`void nicy_start(const char* filepath)`** **The Main Engine:** Initializes the complete runtime environment, sets up the task scheduler and custom `require` resolver, and executes the `.luau` script at the specified path.
 

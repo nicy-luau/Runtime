@@ -464,14 +464,15 @@ unsafe extern "C-unwind" fn task_cancel(l: *mut LuauState) -> c_int {
 
                 // H2 FIX: f64 loses precision above 2^53. Reject IDs that would
                 // truncate to prevent incorrect cancellations.
+                // Return a Lua error instead of silently warning — makes debugging easier.
                 const MAX_SAFE_INTEGER: f64 = 9007199254740992.0; // 2^53
                 if id_raw > MAX_SAFE_INTEGER {
-                    crate::error::ErrorReporter::warn(&format!(
-                        "task.cancel: id {} exceeds safe integer range (2^53), ignoring",
-                        id_raw as u64
-                    ));
-                    lua::lua_pushboolean(l, 0);
-                    return 1;
+                    return lauxlib::luaL_error(
+                        l,
+                        b"task.cancel: delay id %.0f exceeds safe integer range (2^53 = %.0f). Use smaller IDs.\0".as_ptr() as *const _,
+                        id_raw,
+                        MAX_SAFE_INTEGER,
+                    );
                 }
 
                 let id = id_raw as u64;
