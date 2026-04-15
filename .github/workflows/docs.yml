@@ -38,38 +38,29 @@ jobs:
       - name: Generate Sitemap
         working-directory: Docs
         run: |
-          python3 - << 'PYEOF'
-          import os, datetime, xml.etree.ElementTree as ET
+          python3 scripts/generate-sitemap.py \
+            --base-url https://nicy-luau.github.io/Runtime/ \
+            --book-dir book \
+            --output book/sitemap.xml
 
-          base_url = "https://nicy-luau.github.io/Runtime/"
-          build_dir = "book"
-          today = datetime.date.today().isoformat()
+      - name: Validate Sitemap
+        working-directory: Docs
+        run: |
+          python3 -c "
+          import xml.etree.ElementTree as ET
+          import sys
 
-          root = ET.Element("urlset", xmlns="http://www.sitemaps.org/schemas/sitemap/0.9")
+          tree = ET.parse('book/sitemap.xml')
+          root = tree.getroot()
+          ns = {'sm': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
+          urls = root.findall('sm:url', ns)
 
-          for dirpath, dirs, files in os.walk(build_dir):
-              for f in files:
-                  if f.endswith(".html") and f != "print.html":
-                      full = os.path.join(dirpath, f)
-                      rel = os.path.relpath(full, build_dir)
-                      if rel == "index.html":
-                          loc = base_url
-                      elif rel.endswith("/index.html"):
-                          loc = base_url + rel[:-len("index.html")]
-                      else:
-                          loc = base_url + rel.replace(".html", "") + "/"
+          if len(urls) < 5:
+              print(f'::error::Sitemap has only {len(urls)} URLs. Expected at least 5.')
+              sys.exit(1)
 
-                      url = ET.SubElement(root, "url")
-                      ET.SubElement(url, "loc").text = loc
-                      ET.SubElement(url, "lastmod").text = today
-                      ET.SubElement(url, "priority").text = "1.0" if loc == base_url else "0.8"
-                      ET.SubElement(url, "changefreq").text = "weekly"
-
-          tree = ET.ElementTree(root)
-          ET.indent(tree, space="  ")
-          tree.write(os.path.join(build_dir, "sitemap.xml"), encoding="UTF-8", xml_declaration=True)
-          print(f"Generated sitemap.xml with {len(root)} URLs")
-          PYEOF
+          print(f'✓ Sitemap valid: {len(urls)} URLs')
+          "
 
       - name: Generate robots.txt
         working-directory: Docs

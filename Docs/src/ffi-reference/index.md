@@ -1,6 +1,6 @@
 # FFI C-ABI Reference
 
-NicyRuntime exports **90 functions** with a stable `extern "C-unwind"` ABI. This includes **5 core runtime functions** (`nicy_start`, `nicy_eval`, `nicy_compile`, `nicy_version`, `nicy_luau_version`), **83 Lua C API wrappers** for complete Luau state management, and **2 error code utilities**.
+NicyRuntime exports **{{FFI_COUNT}} functions** with a stable `extern "C-unwind"` ABI. This includes **5 core runtime functions** (`nicy_start`, `nicy_eval`, `nicy_compile`, `nicy_version`, `nicy_luau_version`), **{{FFI_COUNT_MINUS_CORE}} Lua C API wrappers** for complete Luau state management, and **2 error code utilities**.
 
 ## Header File
 

@@ -35,7 +35,7 @@ C:\NicyRuntime\
 - **Asynchronous Task Scheduler** — Cooperative multitasking with `task.spawn`, `task.defer`, `task.delay`, `task.wait`, and `task.cancel`.
 - **Cross-Platform** — Builds for Windows, macOS, Linux, and Android (Termux).
 - **Luau CodeGen/JIT** — Add `--!native` on the first line of a file to enable native bytecode compilation (disabled on Android for stability).
-- **90 FFI Functions** — Complete C-ABI API for embedding in any language (C, C++, Python, C#, Node.js, Rust via libloading), plus error code utilities.
+- **{{FFI_COUNT}} FFI Functions** — Complete C-ABI API for embedding in any language (C, C++, Python, C#, Node.js, Rust via libloading), plus error code utilities.
 
 ## Luau API
 
