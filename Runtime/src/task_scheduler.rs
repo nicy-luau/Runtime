@@ -6,14 +6,17 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at http://mozilla.org/MPL/2.0/.
 */
 
+#![allow(unreachable_code)]
+
 use crate::error::{ErrorReporter, NicyError};
+use crate::panic_payload_to_string;
 use mlua_sys::luau::compat;
 use mlua_sys::luau::lauxlib;
 use mlua_sys::luau::lua;
 use std::collections::{BinaryHeap, HashMap, VecDeque};
-use std::os::raw::c_int;
+use std::os::raw::{c_char, c_int};
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::atomic::{AtomicUsize, Ordering, compiler_fence};
+use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering, compiler_fence};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -129,9 +132,25 @@ impl Scheduler {
 
 static SCHED: OnceLock<Mutex<Scheduler>> = OnceLock::new();
 static CURRENT_L: AtomicUsize = AtomicUsize::new(0);
+/// FIX (UB): Track whether the current Lua state is valid for unref operations.
+/// Replaces the lua_gettop() guard which was itself UB on closed states.
+static CURRENT_L_VALID: AtomicBool = AtomicBool::new(false);
 
 fn scheduler() -> &'static Mutex<Scheduler> {
     SCHED.get_or_init(|| Mutex::new(Scheduler::new()))
+}
+
+/// Mark the current Lua state as valid for unref operations.
+/// Call this right after creating a new Lua state, before any scheduler work.
+pub fn mark_current_state_valid(l: *mut LuauState) {
+    CURRENT_L.store(l as usize, Ordering::SeqCst);
+    CURRENT_L_VALID.store(true, Ordering::SeqCst);
+}
+
+/// Mark the current Lua state as invalid (e.g., before closing it).
+pub fn mark_current_state_invalid() {
+    CURRENT_L_VALID.store(false, Ordering::SeqCst);
+    CURRENT_L.store(0, Ordering::SeqCst);
 }
 
 /// CRITICAL FIX (C-1): Clear all scheduler static state AND unref all thread registry refs.
@@ -158,31 +177,25 @@ pub fn shutdown_scheduler(l: *mut LuauState) {
         drop(s);
     }
     // Reset CURRENT_L to null with SeqCst to prevent data races
+    CURRENT_L_VALID.store(false, Ordering::SeqCst);
     CURRENT_L.store(0, Ordering::SeqCst);
 }
 
-/// CRITICAL FIX (F1.3): Unref a Lua state registry reference with safety guards.
-/// Validates that the Lua state pointer is valid before attempting unref operation.
+/// FIX (UB): Unref a Lua state registry reference with safety guards.
+/// Uses CURRENT_L_VALID boolean flag instead of lua_gettop() which was itself UB
+/// on closed/freed states. The caller must ensure the state is still open.
 ///
 /// # Safety
 /// This function is inherently unsafe as it deals with raw Lua state pointers.
-/// The caller must ensure this is called in appropriate contexts.
 unsafe fn lauxlib_unref_current_state(r: c_int) {
-    // Guard 1: Verify CURRENT_L is set
+    // Check validity flag — avoids any FFI call on a potentially closed state
+    if !CURRENT_L_VALID.load(Ordering::SeqCst) {
+        return;
+    }
     let l = CURRENT_L.load(Ordering::SeqCst) as *mut LuauState;
     if l.is_null() {
         return;
     }
-    
-    // Guard 2: Verify the Lua state is still valid by checking if top is accessible
-    // This prevents attempting unref on a closed/freed state
-    let top = unsafe { lua::lua_gettop(l) };
-    if top < 0 {
-        // Invalid state - likely closed or corrupted
-        return;
-    }
-    
-    // All guards passed, safe to unref
     unsafe { lauxlib::luaL_unref(l, lua::LUA_REGISTRYINDEX, r) };
 }
 
@@ -192,22 +205,12 @@ fn duration_from_seconds(secs: f64) -> Duration {
     }
     // Arredondar para 1ms para evitar overhead de timers muito curtos
     let ms = (secs * 1000.0).round() as u64;
-    let capped_ms = ms.max(1).min(60_000 * 60 * 24 * 365 * 10);
+    let capped_ms = ms.clamp(1, 60_000 * 60 * 24 * 365 * 10);
     Duration::from_millis(capped_ms)
 }
 
-fn panic_payload_to_string(p: Box<dyn std::any::Any + Send>) -> String {
-    if let Some(s) = p.downcast_ref::<&str>() {
-        return (*s).to_string();
-    }
-    if let Some(s) = p.downcast_ref::<String>() {
-        return s.clone();
-    }
-    "panic".to_string()
-}
-
 unsafe fn raise_panic_as_lua_error(l: *mut LuauState, msg: &str) -> c_int {
-    unsafe { compat::lua_pushlstring(l, msg.as_ptr() as *const _, msg.len()) };
+    unsafe { compat::lua_pushlstring(l, msg.as_ptr() as *const c_char, msg.len()) };
     unsafe { lua::lua_error(l) }
 }
 
@@ -464,15 +467,12 @@ unsafe extern "C-unwind" fn task_cancel(l: *mut LuauState) -> c_int {
 
                 // H2 FIX: f64 loses precision above 2^53. Reject IDs that would
                 // truncate to prevent incorrect cancellations.
-                // Return a Lua error instead of silently warning — makes debugging easier.
                 const MAX_SAFE_INTEGER: f64 = 9007199254740992.0; // 2^53
                 if id_raw > MAX_SAFE_INTEGER {
-                    return lauxlib::luaL_error(
-                        l,
-                        b"task.cancel: delay id %.0f exceeds safe integer range (2^53 = %.0f). Use smaller IDs.\0".as_ptr() as *const _,
-                        id_raw,
-                        MAX_SAFE_INTEGER,
-                    );
+                    let msg = c"task.cancel: delay id exceeds safe integer range (2^53). Use smaller IDs.";
+                    lua::lua_pushnil(l);
+                    compat::lua_pushlstring(l, msg.as_ptr() as *const c_char, msg.to_bytes().len());
+                    return 2;
                 }
 
                 let id = id_raw as u64;
@@ -515,21 +515,21 @@ pub fn init(l: *mut LuauState) {
     unsafe { lua::lua_createtable(l, 0, 5) };
 
     unsafe { lua::lua_pushcfunction(l, task_spawn) };
-    unsafe { lua::lua_setfield(l, -2, b"spawn\0".as_ptr() as *const _) };
+    unsafe { lua::lua_setfield(l, -2, c"spawn".as_ptr() as *const _) };
 
     unsafe { lua::lua_pushcfunction(l, task_defer) };
-    unsafe { lua::lua_setfield(l, -2, b"defer\0".as_ptr() as *const _) };
+    unsafe { lua::lua_setfield(l, -2, c"defer".as_ptr() as *const _) };
 
     unsafe { lua::lua_pushcfunction(l, task_delay) };
-    unsafe { lua::lua_setfield(l, -2, b"delay\0".as_ptr() as *const _) };
+    unsafe { lua::lua_setfield(l, -2, c"delay".as_ptr() as *const _) };
 
     unsafe { lua::lua_pushcfunction(l, task_wait) };
-    unsafe { lua::lua_setfield(l, -2, b"wait\0".as_ptr() as *const _) };
+    unsafe { lua::lua_setfield(l, -2, c"wait".as_ptr() as *const _) };
 
     unsafe { lua::lua_pushcfunction(l, task_cancel) };
-    unsafe { lua::lua_setfield(l, -2, b"cancel\0".as_ptr() as *const _) };
+    unsafe { lua::lua_setfield(l, -2, c"cancel".as_ptr() as *const _) };
 
-    unsafe { lua::lua_setglobal(l, b"task\0".as_ptr() as *const _) };
+    unsafe { lua::lua_setglobal(l, c"task".as_ptr() as *const _) };
 }
 
 unsafe fn resume_thread(l: *mut LuauState, thread_ref: c_int) -> Result<bool, ()> {
@@ -779,4 +779,58 @@ pub fn resume_thread_by_ref(thread_ref: c_int) {
 pub fn register_thread(l: *mut LuauState, thread_ref: c_int) {
     let mut s = scheduler().lock().unwrap();
     s.thread_refs.insert(l as usize, thread_ref);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_duration_from_seconds_positive() {
+        let d = duration_from_seconds(1.5);
+        assert_eq!(d, Duration::from_millis(1500));
+    }
+
+    #[test]
+    fn test_duration_from_seconds_zero() {
+        let d = duration_from_seconds(0.0);
+        assert_eq!(d, Duration::ZERO);
+    }
+
+    #[test]
+    fn test_duration_from_seconds_negative() {
+        let d = duration_from_seconds(-1.0);
+        assert_eq!(d, Duration::ZERO);
+    }
+
+    #[test]
+    fn test_duration_from_seconds_nan() {
+        let d = duration_from_seconds(f64::NAN);
+        assert_eq!(d, Duration::ZERO);
+    }
+
+    #[test]
+    fn test_duration_from_seconds_infinity() {
+        let d = duration_from_seconds(f64::INFINITY);
+        assert_eq!(d, Duration::ZERO);
+    }
+
+    #[test]
+    fn test_duration_from_seconds_minimum_1ms() {
+        let d = duration_from_seconds(0.0001);
+        assert!(d.as_millis() >= 1);
+    }
+
+    #[test]
+    fn test_panic_payload_to_string() {
+        assert_eq!(panic_payload_to_string(Box::new("task error")), "task error");
+        assert_eq!(
+            panic_payload_to_string(Box::new(String::from("owned"))),
+            "owned"
+        );
+        assert_eq!(
+            panic_payload_to_string(Box::new(123i32)),
+            "non-string panic payload"
+        );
+    }
 }
