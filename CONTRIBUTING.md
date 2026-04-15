@@ -33,9 +33,7 @@ Thank you for your interest in contributing to Nicy Runtime! This document cover
 
 ## Code of Conduct
 
-- Be respectful and constructive in all interactions.
-- Assume good faith — contributors are here to help.
-- Keep discussions focused on the task at hand.
+Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before participating. This project follows the [Contributor Covenant v2.1](https://www.contributor-covenant.org/version/2/1/).
 
 ---
 
