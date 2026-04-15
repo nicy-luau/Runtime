@@ -148,6 +148,9 @@ C:\NicyRuntime\
 │   └── tests/              # Luau integration tests
 │       ├── run_all.luau    # Test runner (all suites)
 │       ├── helpers/        # Test helpers (expect library)
+│       ├── Core/           # Core API tests (vectors, buffers, metatables, stdlib, GC, bit32, etc.)
+│       ├── Require/        # Module resolution tests
+│       ├── Runtime/        # Runtime API tests (error handling, shutdown, globals, traceback, loadlib)
 │       └── Task/           # Task scheduler integration tests
 ├── Docs/                   # mdBook documentation site
 ├── build.ps1               # Build script (Windows, multi-target)
@@ -226,7 +229,7 @@ chore: bump version to 1.1.0
 - **No `unsafe` blocks** unless directly interacting with FFI. Keep `unsafe` scopes as narrow as possible.
 - **Error handling**: Propagate errors via `Result` where possible. Use `NicyError` enum for typed error codes.
 - **Logging**: Use `ErrorReporter::report_with_state()` or `ErrorReporter::warn()` instead of `println!`.
-- **Avoid** adding `println!` or debug output to production code. Use `#[cfg(test)]` for test-specific code.
+- **Avoid** adding `println!` or debug output to production code. The only exception is `nicy_compile`, which uses `println!` for build output. Use `#[cfg(test)]` for test-specific code.
 
 ### Luau Test Code
 
@@ -278,6 +281,21 @@ cargo build --release -p nicyruntime --target aarch64-linux-android
 ```
 
 The `build.ps1` script handles target setup automatically on Windows.
+
+### Available OS Functions
+
+The runtime extends the standard `os` library with the following functions:
+
+| Function | Description |
+|----------|-------------|
+| `os.exit(code?)` | Terminates the process with the given exit code |
+| `os.getenv(name)` | Returns an environment variable or nil |
+| `os.remove(path)` | Removes a file or empty directory |
+| `os.rename(old, new)` | Renames/moves a file |
+| `os.sleep(ms)` | Blocks the current thread for the given milliseconds |
+| `os.tmpname()` | Generates a unique temporary file path |
+
+Note: `os.execute` is **not** available in this runtime.
 
 ---
 
