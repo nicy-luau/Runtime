@@ -19,7 +19,6 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-mod api;
 mod error;
 mod ffi_exports;
 mod require_resolver;
