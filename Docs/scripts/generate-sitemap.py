@@ -23,11 +23,7 @@ def to_absolute_url(book_dir: Path, html_file: Path, site_root: str) -> str:
     rel_path = html_file.relative_to(book_dir).as_posix()
     if rel_path == "index.html":
         return site_root
-    if rel_path.endswith("/index.html"):
-        return f"{site_root}{rel_path[:-len('index.html')]}"
-    if "/" not in rel_path:
-        return f"{site_root}{rel_path}"
-    return f"{site_root}{rel_path[:-len('.html')]}/"
+    return f"{site_root}{rel_path}"
 
 
 def metadata_for(url: str, site_root: str) -> tuple[str, str]:
