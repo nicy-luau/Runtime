@@ -309,7 +309,7 @@ NICY_EXTERN_C void NICY_CAPI nicy_luaL_unref(nicy_State *L, int t, int ref);
  * 15. lauxlib — metatables and length
  * ================================================================ */
 
-NICY_EXTERN_C int  NICY_CAPI nicy_luaL_len(nicy_State *L, int idx);
+NICY_EXTERN_C nicy_Integer NICY_CAPI nicy_luaL_len(nicy_State *L, int idx);
 NICY_EXTERN_C int  NICY_CAPI nicy_luaL_newmetatable(nicy_State *L, const char *tname);
 NICY_EXTERN_C int  NICY_CAPI nicy_luaL_getmetatable(nicy_State *L, const char *tname);
 
@@ -327,6 +327,25 @@ NICY_EXTERN_C int  NICY_CAPI nicy_luaL_getmetatable(nicy_State *L, const char *t
  * nicy_lua_pop — Pop n values from the stack.
  */
 #define nicy_lua_pop(L, n)  nicy_lua_settop((L), -(n) - 1)
+
+/* ================================================================
+ * 17. Error code helpers
+ * ================================================================ */
+
+/**
+ * nicy_error_name — Convert an error code number to its human-readable name.
+ *
+ * @param code  Error code (e.g. 103 for NICY_ERR_CYCLIC_REQUIRE).
+ * @return  Static string such as "NICY_ERR_CYCLIC_REQUIRE".  Do not free.
+ */
+NICY_EXTERN_C const char * NICY_CAPI nicy_error_name(int code);
+
+/**
+ * nicy_is_nicy_error — Check if an error code is Nicy-specific (100+ range).
+ *
+ * @return  1 if Nicy-specific, 0 if standard Luau code.
+ */
+NICY_EXTERN_C int NICY_CAPI nicy_is_nicy_error(int code);
 
 /* ================================================================
  * Notes for embedders
