@@ -3,18 +3,18 @@ name: Validate Docs
 on:
   pull_request:
     paths:
-      - 'Docs/**'
-      - 'Runtime/src/ffi_exports.rs'
-      - 'Runtime/src/lib.rs'
-      - 'README.md'
-      - 'Runtime/README.md'
+      - "Docs/**"
+      - "Runtime/src/ffi_exports.rs"
+      - "Runtime/src/lib.rs"
+      - "README.md"
+      - "Runtime/README.md"
   push:
     branches:
       - main
     paths:
-      - 'Docs/**'
-      - 'Runtime/src/ffi_exports.rs'
-      - 'Runtime/src/lib.rs'
+      - "Docs/**"
+      - "Runtime/src/ffi_exports.rs"
+      - "Runtime/src/lib.rs"
 
 jobs:
   validate-ffi-count:
@@ -37,8 +37,8 @@ jobs:
         id: count-docs
         run: |
           # Check if placeholder is still there (good — means it will be replaced)
-          if grep -q '{{FFI_COUNT}}' Docs/src/ffi-reference/index.md; then
-            echo "Found {{FFI_COUNT}} placeholder in docs (will be replaced by script)."
+          if grep -q '\[FFI_COUNT\]' Docs/src/ffi-reference/index.md; then
+            echo "Found [FFI_COUNT] placeholder in docs (will be replaced by script)."
             echo "status=placeholder" >> $GITHUB_OUTPUT
             echo "count=placeholder" >> $GITHUB_OUTPUT
           else
@@ -50,8 +50,8 @@ jobs:
       - name: Check README
         id: count-readme
         run: |
-          if grep -q '{{FFI_COUNT}}' README.md; then
-            echo "Found {{FFI_COUNT}} placeholder in README."
+          if grep -q '\[FFI_COUNT\]' README.md; then
+            echo "Found [FFI_COUNT] placeholder in README."
             echo "status=placeholder" >> $GITHUB_OUTPUT
             echo "count=placeholder" >> $GITHUB_OUTPUT
           else
@@ -68,7 +68,7 @@ jobs:
 
           # If placeholders are present, docs are using the new system
           if [ "$DOCS_STATUS" = "placeholder" ] && [ "$README_STATUS" = "placeholder" ]; then
-            echo "✓ Docs use {{FFI_COUNT}} placeholder system."
+            echo "✓ Docs use [FFI_COUNT] placeholder system."
             echo "✓ Actual count in code: $ACTUAL"
             echo "✓ Run 'bash Docs/scripts/update-ffi-count.sh' before publishing to replace placeholders."
             exit 0
@@ -133,7 +133,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install mdBook
         run: |

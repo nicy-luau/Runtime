@@ -52,12 +52,12 @@ function Find-FilesWithPlaceholder {
             if ((Test-Path $path) -and (Get-Item $path).PSIsContainer) {
                 $files += Get-ChildItem -Path $path -Recurse -File |
                     Where-Object { $_.Extension -match '\.(md|txt)$' } |
-                    Select-String -Pattern '\{\{FFI_COUNT\}\}' |
+                    Select-String -Pattern '\[FFI_COUNT\]' |
                     ForEach-Object { $_.Path } |
                     Select-Object -Unique
             } else {
                 $content = Get-Content $path -Raw
-                if ($content -match '\{\{FFI_COUNT\}\}') {
+                if ($content -match '\[FFI_COUNT\]') {
                     $files += $path
                 }
             }
@@ -88,11 +88,11 @@ $docsFiles = Find-FilesWithPlaceholder
 if ($Check) {
     # Check mode
     if ($docsFiles.Count -gt 0) {
-        Write-Host "`n✓ Found {{FFI_COUNT}} placeholder in $($docsFiles.Count) file(s)." -ForegroundColor Green
+        Write-Host "`n✓ Found [FFI_COUNT] placeholder in $($docsFiles.Count) file(s)." -ForegroundColor Green
 
         $mismatch = $false
         foreach ($file in $docsFiles) {
-            if ((Get-Content $file -Raw) -match '\{\{FFI_COUNT\}\}') {
+            if ((Get-Content $file -Raw) -match '\[FFI_COUNT\]') {
                 Write-Host "  ✓ $file (uses placeholder)" -ForegroundColor Gray
             }
         }
@@ -102,14 +102,14 @@ if ($Check) {
             exit 1
         }
     } else {
-        Write-Host "`n::warning::No {{FFI_COUNT}} placeholder found in docs." -ForegroundColor Yellow
+        Write-Host "`n::warning::No [FFI_COUNT] placeholder found in docs." -ForegroundColor Yellow
         Write-Host "Consider adding it to keep docs in sync automatically." -ForegroundColor Yellow
     }
 } else {
     # Update mode
     if ($docsFiles.Count -eq 0) {
-        Write-Host "`nNo {{FFI_COUNT}} placeholder found in docs." -ForegroundColor Yellow
-        Write-Host "To use this feature, replace FFI counts in docs with {{FFI_COUNT}}." -ForegroundColor Yellow
+        Write-Host "`nNo [FFI_COUNT] placeholder found in docs." -ForegroundColor Yellow
+        Write-Host "To use this feature, replace FFI counts in docs with [FFI_COUNT]." -ForegroundColor Yellow
         exit 0
     }
 
@@ -118,8 +118,8 @@ if ($Check) {
     foreach ($file in $docsFiles) {
         Write-Host "  Updating: $file" -ForegroundColor Gray
         $content = Get-Content $file -Raw
-        $content = $content -replace '\{\{FFI_COUNT\}\}', $actualCount
-        $content = $content -replace '\{\{FFI_COUNT_MINUS_CORE\}\}', $coreWrappers
+        $content = $content -replace '\[FFI_COUNT\]', $actualCount
+        $content = $content -replace '\[FFI_COUNT_MINUS_CORE\]', $coreWrappers
         [System.IO.File]::WriteAllText($file, $content, [System.Text.Encoding]::UTF8)
     }
 
