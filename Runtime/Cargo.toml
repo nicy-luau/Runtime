@@ -9,6 +9,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 libloading = "0.9"
+serde_json = "1"
 
 # x64 e ARM: vector4 + codegen
 [target.'cfg(all(not(target_os = "android"), not(target_arch = "x86")))'.dependencies]
