@@ -1,0 +1,66 @@
+/* NicyRuntime - mdBook Custom Theme */
+
+:root {
+    --bg: #0f172a;
+    --fg: #e2e8f0;
+    --sidebar-bg: #1e293b;
+    --sidebar-fg: #cbd5e1;
+    --sidebar-active: #f59e0b;
+    --links: #f59e0b;
+    --links-visited: #d97706;
+    --inline-code-color: #fbbf24;
+    --searchbar-bg: #1e293b;
+    --searchbar-border-color: #334155;
+    --searchbar-shadow-color: rgba(245, 158, 11, 0.3);
+    --quote-bg: rgba(245, 158, 11, 0.08);
+    --quote-border: #f59e0b;
+    --table-header-bg: #1e293b;
+    --table-alternate-bg: rgba(30, 41, 59, 0.5);
+    --table-border-color: #334155;
+    --code-bg: #1e293b;
+    --code-border: #334155;
+    --scrollbar-thumb-bg: #334155;
+}
+
+.content h1 {
+    border-bottom: 2px solid var(--links);
+    padding-bottom: 0.4em;
+}
+
+.content h3 {
+    color: var(--links);
+}
+
+.content blockquote {
+    background: var(--quote-bg);
+    border-left-color: var(--quote-border);
+    border-radius: 4px;
+    padding: 0.5em 1em;
+}
+
+.sidebar .sidebar-scrollbox .chapter-item a.active {
+    color: var(--sidebar-active);
+    font-weight: 600;
+}
+
+.content pre {
+    border: 1px solid var(--code-border);
+    border-radius: 6px;
+}
+
+.content thead th {
+    background: var(--table-header-bg);
+}
+
+#searchbar:focus {
+    box-shadow: 0 0 0 3px var(--searchbar-shadow-color);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb-bg);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--sidebar-active);
+}

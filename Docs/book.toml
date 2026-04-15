@@ -1,0 +1,27 @@
+[book]
+title = "NicyRuntime"
+authors = ["NicyRuntime Contributors"]
+description = "A blazing-fast Luau runtime environment built in Rust"
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/nicy-luau/Runtime"
+git-repository-icon = "fa-github"
+edit-url-template = "https://github.com/nicy-luau/Runtime/edit/main/Docs/{path}"
+additional-css = ["theme/css/custom.css"]
+site-url = "https://nicy-luau.github.io/Runtime/"
+
+[output.html.search]
+enable = true
+limit-results = 15
+
+[output.html.fold]
+enable = true
+level = 1

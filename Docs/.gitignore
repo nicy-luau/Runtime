@@ -1,0 +1,12 @@
+# Dependencies
+node_modules/
+
+# Production build
+build/
+
+# Docusaurus cache
+.docusaurus/
+
+# OS files
+.DS_Store
+Thumbs.db
