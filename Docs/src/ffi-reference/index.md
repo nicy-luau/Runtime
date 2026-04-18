@@ -1,8 +1,10 @@
 # FFI C-ABI Reference
 
-NicyRuntime exports **85 functions** with a stable `extern "C-unwind"` ABI. This includes **83 Lua C API wrappers** for complete Luau state management and **2 error code utilities**.
+NicyRuntime exports **89 functions** with a stable `extern "C-unwind"` ABI. This includes **87 Lua C API wrappers** for complete Luau state management and **2 error code utilities**.
 
 ## Header File
+
+[📥 Download NicyRuntime.h](https://raw.githubusercontent.com/nicy-luau/Runtime/main/Runtime/NicyRuntime.h)
 
 Include in your C/C++ project:
 
@@ -12,134 +14,138 @@ Include in your C/C++ project:
 
 ## Calling Convention
 
-All functions use `extern "C-unwind"`, allowing exceptions to propagate across FFI boundaries.
+All functions use `extern "C-unwind"`, allowing exceptions to propagate across FFI boundaries. In C, these are mapped according to the platform's ABI (e.g., `__cdecl` on Windows).
 
 ## Stack Operations
 
 | Function | Signature |
 |----------|-----------|
-| `nicy_lua_gettop` | `c_int(*l)` |
-| `nicy_lua_settop` | `void(*l, idx)` |
-| `nicy_lua_pushvalue` | `void(*l, idx)` |
-| `nicy_lua_remove` | `void(*l, idx)` |
-| `nicy_lua_insert` | `void(*l, idx)` |
-| `nicy_lua_absindex` | `c_int(*l, idx)` |
-| `nicy_lua_checkstack` | `c_int(*l, extra)` |
-| `nicy_lua_pop` | `void(*l, n)` (macro: `settop(l, -n-1)`) |
+| `nicy_lua_gettop` | `int nicy_lua_gettop(nicy_State *L);` |
+| `nicy_lua_settop` | `void nicy_lua_settop(nicy_State *L, int idx);` |
+| `nicy_lua_pushvalue` | `void nicy_lua_pushvalue(nicy_State *L, int idx);` |
+| `nicy_lua_remove` | `void nicy_lua_remove(nicy_State *L, int idx);` |
+| `nicy_lua_insert` | `void nicy_lua_insert(nicy_State *L, int idx);` |
+| `nicy_lua_absindex` | `int nicy_lua_absindex(nicy_State *L, int idx);` |
+| `nicy_lua_checkstack` | `int nicy_lua_checkstack(nicy_State *L, int extra);` |
+| `nicy_lua_pop` | `void nicy_lua_pop(nicy_State *L, int n);` *(macro: `settop(L, -n-1)`)* |
 
 ## Push Operations
 
 | Function | Signature |
 |----------|-----------|
-| `nicy_lua_pushnil` | `void(*l)` |
-| `nicy_lua_pushboolean` | `void(*l, b: c_int)` |
-| `nicy_lua_pushnumber` | `void(*l, n: lua_Number)` |
-| `nicy_lua_pushinteger` | `void(*l, n: lua_Integer)` |
-| `nicy_lua_pushstring` | `void(*l, s: *const c_char)` |
-| `nicy_lua_pushlstring` | `void(*l, s: *const c_char, len: usize)` |
-| `nicy_lua_pushcfunction` | `void(*l, f: lua_CFunction)` |
-| `nicy_lua_pushcclosure` | `void(*l, f: lua_CFunction, n: c_int)` |
-| `nicy_lua_pushlightuserdata` | `void(*l, p: *mut c_void)` |
-| `nicy_lua_newuserdata` | `*mut c_void(*l, sz: usize)` |
-| `nicy_lua_newthread` | `*mut LuauState(*l)` |
+| `nicy_lua_pushnil` | `void nicy_lua_pushnil(nicy_State *L);` |
+| `nicy_lua_pushboolean` | `void nicy_lua_pushboolean(nicy_State *L, int b);` |
+| `nicy_lua_pushnumber` | `void nicy_lua_pushnumber(nicy_State *L, nicy_Number n);` |
+| `nicy_lua_pushinteger` | `void nicy_lua_pushinteger(nicy_State *L, nicy_Integer n);` |
+| `nicy_lua_pushstring` | `void nicy_lua_pushstring(nicy_State *L, const char *s);` |
+| `nicy_lua_pushlstring` | `void nicy_lua_pushlstring(nicy_State *L, const char *s, size_t len);` |
+| `nicy_lua_pushcfunction` | `void nicy_lua_pushcfunction(nicy_State *L, nicy_CFunction f);` |
+| `nicy_lua_pushcclosure` | `void nicy_lua_pushcclosure(nicy_State *L, nicy_CFunction f, int n);` |
+| `nicy_lua_pushlightuserdata` | `void nicy_lua_pushlightuserdata(nicy_State *L, void *p);` |
+| `nicy_lua_newuserdata` | `void *nicy_lua_newuserdata(nicy_State *L, size_t sz);` |
+| `nicy_lua_newbuffer` | `void *nicy_lua_newbuffer(nicy_State *L, size_t sz);` |
+| `nicy_lua_newthread` | `nicy_State *nicy_lua_newthread(nicy_State *L);` |
 
 ## Type Checking
 
 | Function | Signature |
 |----------|-----------|
-| `nicy_lua_type` | `c_int(*l, idx)` |
-| `nicy_lua_typename` | `*const c_char(*l, tp: c_int)` |
-| `nicy_lua_isnil` | `c_int(*l, idx)` |
-| `nicy_lua_isboolean` | `c_int(*l, idx)` |
-| `nicy_lua_isnumber` | `c_int(*l, idx)` |
-| `nicy_lua_isstring` | `c_int(*l, idx)` |
-| `nicy_lua_istable` | `c_int(*l, idx)` |
-| `nicy_lua_isfunction` | `c_int(*l, idx)` |
-| `nicy_lua_isuserdata` | `c_int(*l, idx)` |
-| `nicy_lua_isthread` | `c_int(*l, idx)` |
-| `nicy_lua_iscfunction` | `c_int(*l, idx)` |
-| `nicy_lua_isinteger` | `c_int(*l, idx)` |
+| `nicy_lua_type` | `int nicy_lua_type(nicy_State *L, int idx);` |
+| `nicy_lua_typename` | `const char *nicy_lua_typename(nicy_State *L, int tp);` |
+| `nicy_lua_isnil` | `int nicy_lua_isnil(nicy_State *L, int idx);` |
+| `nicy_lua_isboolean` | `int nicy_lua_isboolean(nicy_State *L, int idx);` |
+| `nicy_lua_isnumber` | `int nicy_lua_isnumber(nicy_State *L, int idx);` |
+| `nicy_lua_isstring` | `int nicy_lua_isstring(nicy_State *L, int idx);` |
+| `nicy_lua_istable` | `int nicy_lua_istable(nicy_State *L, int idx);` |
+| `nicy_lua_isfunction` | `int nicy_lua_isfunction(nicy_State *L, int idx);` |
+| `nicy_lua_isuserdata` | `int nicy_lua_isuserdata(nicy_State *L, int idx);` |
+| `nicy_lua_isthread` | `int nicy_lua_isthread(nicy_State *L, int idx);` |
+| `nicy_lua_iscfunction` | `int nicy_lua_iscfunction(nicy_State *L, int idx);` |
+| `nicy_lua_isinteger` | `int nicy_lua_isinteger(nicy_State *L, int idx);` |
+| `nicy_lua_isbuffer` | `int nicy_lua_isbuffer(nicy_State *L, int idx);` |
 
 ## Get & Conversion
 
 | Function | Signature |
 |----------|-----------|
-| `nicy_lua_tostring` | `*const c_char(*l, idx)` |
-| `nicy_lua_tolstring` | `*const c_char(*l, idx, len: *mut usize)` |
-| `nicy_lua_toboolean` | `c_int(*l, idx)` |
-| `nicy_lua_tonumber` | `lua_Number(*l, idx)` |
-| `nicy_lua_tointeger` | `lua_Integer(*l, idx)` |
-| `nicy_lua_touserdata` | `*mut c_void(*l, idx)` |
+| `nicy_lua_tostring` | `const char *nicy_lua_tostring(nicy_State *L, int idx);` |
+| `nicy_lua_tolstring` | `const char *nicy_lua_tolstring(nicy_State *L, int idx, size_t *len);` |
+| `nicy_lua_toboolean` | `int nicy_lua_toboolean(nicy_State *L, int idx);` |
+| `nicy_lua_tonumber` | `nicy_Number nicy_lua_tonumber(nicy_State *L, int idx);` |
+| `nicy_lua_tointeger` | `nicy_Integer nicy_lua_tointeger(nicy_State *L, int idx);` |
+| `nicy_lua_touserdata` | `void *nicy_lua_touserdata(nicy_State *L, int idx);` |
+| `nicy_lua_tobuffer` | `void *nicy_lua_tobuffer(nicy_State *L, int idx, size_t *len);` |
 
 ## Table Access
 
 | Function | Signature |
 |----------|-----------|
-| `nicy_lua_getfield` | `void(*l, idx, k: *const c_char)` |
-| `nicy_lua_getglobal` | `void(*l, k: *const c_char)` |
-| `nicy_lua_setglobal` | `void(*l, k: *const c_char)` |
-| `nicy_lua_gettable` | `void(*l, idx)` |
-| `nicy_lua_settable` | `void(*l, idx)` |
-| `nicy_lua_rawget` | `void(*l, idx)` |
-| `nicy_lua_rawgeti` | `void(*l, idx, n: lua_Integer)` |
-| `nicy_lua_rawset` | `void(*l, idx)` |
-| `nicy_lua_rawseti` | `void(*l, idx, n: lua_Integer)` |
-| `nicy_lua_getmetatable` | `c_int(*l, idx)` |
-| `nicy_lua_setmetatable` | `c_int(*l, idx)` |
-| `nicy_lua_createtable` | `void(*l, narr: c_int, nrec: c_int)` |
-| `nicy_lua_next` | `c_int(*l, idx)` |
+| `nicy_lua_getfield` | `void nicy_lua_getfield(nicy_State *L, int idx, const char *k);` |
+| `nicy_lua_getglobal` | `void nicy_lua_getglobal(nicy_State *L, const char *k);` |
+| `nicy_lua_setglobal` | `void nicy_lua_setglobal(nicy_State *L, const char *k);` |
+| `nicy_lua_gettable` | `void nicy_lua_gettable(nicy_State *L, int idx);` |
+| `nicy_lua_settable` | `void nicy_lua_settable(nicy_State *L, int idx);` |
+| `nicy_lua_rawget` | `void nicy_lua_rawget(nicy_State *L, int idx);` |
+| `nicy_lua_rawgeti` | `void nicy_lua_rawgeti(nicy_State *L, int idx, nicy_Integer n);` |
+| `nicy_lua_rawset` | `void nicy_lua_rawset(nicy_State *L, int idx);` |
+| `nicy_lua_rawseti` | `void nicy_lua_rawseti(nicy_State *L, int idx, nicy_Integer n);` |
+| `nicy_lua_getmetatable` | `int nicy_lua_getmetatable(nicy_State *L, int idx);` |
+| `nicy_lua_setmetatable` | `int nicy_lua_setmetatable(nicy_State *L, int idx);` |
+| `nicy_lua_createtable` | `void nicy_lua_createtable(nicy_State *L, int narr, int nrec);` |
+| `nicy_lua_next` | `int nicy_lua_next(nicy_State *L, int idx);` |
 
 ## Call & Execution
 
 | Function | Signature |
 |----------|-----------|
-| `nicy_lua_call` | `void(*l, nargs: c_int, nresults: c_int)` |
-| `nicy_lua_pcall` | `c_int(*l, nargs, nresults, errfunc: c_int)` |
-| `nicy_lua_error` | `c_int(*l)` |
-| `nicy_lua_resume` | `c_int(*l, from: *mut LuauState, nargs, nres: *mut c_int)` |
-| `nicy_lua_yield` | `c_int(*l, nresults: c_int)` |
+| `nicy_lua_call` | `void nicy_lua_call(nicy_State *L, int nargs, int nresults);` |
+| `nicy_lua_pcall` | `int nicy_lua_pcall(nicy_State *L, int nargs, int nresults, int errfunc);` |
+| `nicy_lua_error` | `int nicy_lua_error(nicy_State *L);` |
+| `nicy_lua_resume` | `int nicy_lua_resume(nicy_State *L, nicy_State *from, int nargs, int *nres);` |
+| `nicy_lua_yield` | `int nicy_lua_yield(nicy_State *L, int nresults);` |
 
 ## Comparison & Other
 
 | Function | Signature |
 |----------|-----------|
-| `nicy_lua_equal` | `c_int(*l, idx1, idx2)` |
-| `nicy_lua_lessthan` | `c_int(*l, idx1, idx2)` |
-| `nicy_lua_rawequal` | `c_int(*l, idx1, idx2)` |
-| `nicy_lua_concat` | `void(*l, n: c_int)` |
-| `nicy_lua_gc` | `c_int(*l, what: c_int, data: c_int)` |
-| `nicy_lua_rawlen` | `usize(*l, idx)` |
+| `nicy_lua_equal` | `int nicy_lua_equal(nicy_State *L, int idx1, int idx2);` |
+| `nicy_lua_lessthan` | `int nicy_lua_lessthan(nicy_State *L, int idx1, int idx2);` |
+| `nicy_lua_rawequal` | `int nicy_lua_rawequal(nicy_State *L, int idx1, int idx2);` |
+| `nicy_lua_concat` | `void nicy_lua_concat(nicy_State *L, int n);` |
+| `nicy_lua_gc` | `int nicy_lua_gc(nicy_State *L, int what, int data);` |
+| `nicy_lua_rawlen` | `size_t nicy_lua_rawlen(nicy_State *L, int idx);` |
 
 ## Lua 5.1 Compatibility
 
 | Function | Signature |
 |----------|-----------|
-| `nicy_lua_getfenv` | `void(*l, idx)` |
-| `nicy_lua_setfenv` | `c_int(*l, idx)` |
+| `nicy_lua_getfenv` | `void nicy_lua_getfenv(nicy_State *L, int idx);` |
+| `nicy_lua_setfenv` | `int nicy_lua_setfenv(nicy_State *L, int idx);` |
 
 ## Auxiliary Library (lauxlib)
 
 | Function | Signature |
 |----------|-----------|
-| `nicy_luaL_checkstring` | `*const c_char(*l, narg: c_int)` |
-| `nicy_luaL_checklstring` | `*const c_char(*l, narg, len: *mut usize)` |
-| `nicy_luaL_checknumber` | `lua_Number(*l, narg)` |
-| `nicy_luaL_checkboolean` | `c_int(*l, narg)` |
-| `nicy_luaL_checkinteger` | `lua_Integer(*l, narg)` |
-| `nicy_luaL_checktype` | `void(*l, narg, t: c_int)` |
-| `nicy_luaL_checkany` | `void(*l, narg)` |
-| `nicy_luaL_optstring` | `*const c_char(*l, narg, d: *const c_char)` |
-| `nicy_luaL_optinteger` | `lua_Integer(*l, narg, d: lua_Integer)` |
-| `nicy_luaL_optnumber` | `lua_Number(*l, narg, d: lua_Number)` |
-| `nicy_luaL_argerror` | `c_int(*l, narg, extramsg: *const c_char)` |
-| `nicy_luaL_where` | `void(*l, lvl: c_int)` |
-| `nicy_luaL_traceback` | `void(*l, l1: *mut LuauState, msg: *const c_char, level: c_int)` |
-| `nicy_luaL_ref` | `c_int(*l, t: c_int)` |
-| `nicy_luaL_unref` | `void(*l, t, r: c_int)` |
-| `nicy_luaL_len` | `lua_Integer(*l, idx)` |
-| `nicy_luaL_newmetatable` | `c_int(*l, tname: *const c_char)` |
-| `nicy_luaL_getmetatable` | `c_int(*l, tname: *const c_char)` |
-| `nicy_luaL_error` | `c_int(*l, msg: *const c_char)` |
+| `nicy_luaL_checkstring` | `const char *nicy_luaL_checkstring(nicy_State *L, int narg);` |
+| `nicy_luaL_checklstring` | `const char *nicy_luaL_checklstring(nicy_State *L, int narg, size_t *len);` |
+| `nicy_luaL_checknumber` | `nicy_Number nicy_luaL_checknumber(nicy_State *L, int narg);` |
+| `nicy_luaL_checkboolean` | `int nicy_luaL_checkboolean(nicy_State *L, int narg);` |
+| `nicy_luaL_checkinteger` | `nicy_Integer nicy_luaL_checkinteger(nicy_State *L, int narg);` |
+| `nicy_luaL_checktype` | `void nicy_luaL_checktype(nicy_State *L, int narg, int t);` |
+| `nicy_luaL_checkany` | `void nicy_luaL_checkany(nicy_State *L, int narg);` |
+| `nicy_luaL_checkbuffer` | `void *nicy_luaL_checkbuffer(nicy_State *L, int narg, size_t *len);` |
+| `nicy_luaL_optstring` | `const char *nicy_luaL_optstring(nicy_State *L, int narg, const char *d);` |
+| `nicy_luaL_optinteger` | `nicy_Integer nicy_luaL_optinteger(nicy_State *L, int narg, nicy_Integer d);` |
+| `nicy_luaL_optnumber` | `nicy_Number nicy_luaL_optnumber(nicy_State *L, int narg, nicy_Number d);` |
+| `nicy_luaL_argerror` | `int nicy_luaL_argerror(nicy_State *L, int narg, const char *extramsg);` |
+| `nicy_luaL_where` | `void nicy_luaL_where(nicy_State *L, int lvl);` |
+| `nicy_luaL_traceback` | `void nicy_luaL_traceback(nicy_State *L, nicy_State *L1, const char *msg, int level);` |
+| `nicy_luaL_ref` | `int nicy_luaL_ref(nicy_State *L, int t);` |
+| `nicy_luaL_unref` | `void nicy_luaL_unref(nicy_State *L, int t, int ref);` |
+| `nicy_luaL_len` | `nicy_Integer nicy_luaL_len(nicy_State *L, int idx);` |
+| `nicy_luaL_newmetatable` | `int nicy_luaL_newmetatable(nicy_State *L, const char *tname);` |
+| `nicy_luaL_getmetatable` | `int nicy_luaL_getmetatable(nicy_State *L, const char *tname);` |
+| `nicy_luaL_error` | `int nicy_luaL_error(nicy_State *L, const char *msg);` |
 
 ## Error Code Utilities
 
@@ -147,8 +153,8 @@ These functions help FFI integrators work with NicyRuntime's error codes:
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `nicy_error_name` | `*const c_char(code: c_int)` | Convert error code to name string (e.g., 103 → `"NICY_ERR_CYCLIC_REQUIRE"`) |
-| `nicy_is_nicy_error` | `c_int(code: c_int)` | Returns 1 if code is Nicy-specific (100+), 0 if standard Luau |
+| `nicy_error_name` | `const char *nicy_error_name(int code);` | Convert error code to name string (e.g., 103 → `"NICY_ERR_CYCLIC_REQUIRE"`) |
+| `nicy_is_nicy_error` | `int nicy_is_nicy_error(int code);` | Returns 1 if code is Nicy-specific (100+), 0 if standard Luau |
 
 ### Example (C)
 
@@ -164,4 +170,12 @@ if (err != 0) {
         fprintf(stderr, "Luau error: %s\n", name);
     }
 }
+```
+
+## Source Code (`NicyRuntime.h`)
+
+Below is the complete, automatically synchronized source code of the `NicyRuntime.h` C header file.
+
+```c
+{{#include ../../../Runtime/NicyRuntime.h}}
 ```
