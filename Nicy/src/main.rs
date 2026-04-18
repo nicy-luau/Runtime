@@ -156,7 +156,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match command {
         "help" | "--help" | "-h" => print_help(),
-        "version" | "--version" | "-v" => println!("nicy 1.0.0-alpha"),
+        "version" | "--version" | "-v" => println!("nicy {}", env!("CARGO_PKG_VERSION")),
         "runtime-version" | "--runtime-version" | "-rv" => {
             let lib = load_nicy_lib().map_err(|details| {
                 eprintln!(
