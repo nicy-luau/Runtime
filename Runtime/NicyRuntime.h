@@ -65,6 +65,7 @@ typedef int (NICY_CAPI *nicy_CFunction)(nicy_State *L);
 #define NICY_LUA_TFUNCTION     6
 #define NICY_LUA_TUSERDATA     7
 #define NICY_LUA_TTHREAD       8
+#define NICY_LUA_TBUFFER       11
 
 /* ================================================================
  * Lua status / error codes
@@ -183,6 +184,7 @@ NICY_EXTERN_C void NICY_CAPI nicy_lua_pushcfunction(nicy_State *L, nicy_CFunctio
 NICY_EXTERN_C void NICY_CAPI nicy_lua_pushcclosure(nicy_State *L, nicy_CFunction f, int n);
 NICY_EXTERN_C void NICY_CAPI nicy_lua_pushlightuserdata(nicy_State *L, void *p);
 NICY_EXTERN_C void *NICY_CAPI nicy_lua_newuserdata(nicy_State *L, size_t sz);
+NICY_EXTERN_C void *NICY_CAPI nicy_lua_newbuffer(nicy_State *L, size_t sz);
 NICY_EXTERN_C nicy_State *NICY_CAPI nicy_lua_newthread(nicy_State *L);
 
 /* ================================================================
@@ -202,6 +204,7 @@ NICY_EXTERN_C int  NICY_CAPI nicy_lua_isuserdata(nicy_State *L, int idx);
 NICY_EXTERN_C int  NICY_CAPI nicy_lua_isthread(nicy_State *L, int idx);
 NICY_EXTERN_C int  NICY_CAPI nicy_lua_iscfunction(nicy_State *L, int idx);
 NICY_EXTERN_C int  NICY_CAPI nicy_lua_isinteger(nicy_State *L, int idx);
+NICY_EXTERN_C int  NICY_CAPI nicy_lua_isbuffer(nicy_State *L, int idx);
 
 /* ================================================================
  * 5. Get / conversion operations
@@ -213,6 +216,7 @@ NICY_EXTERN_C int         NICY_CAPI nicy_lua_toboolean(nicy_State *L, int idx);
 NICY_EXTERN_C nicy_Number NICY_CAPI nicy_lua_tonumber(nicy_State *L, int idx);
 NICY_EXTERN_C nicy_Integer NICY_CAPI nicy_lua_tointeger(nicy_State *L, int idx);
 NICY_EXTERN_C void *      NICY_CAPI nicy_lua_touserdata(nicy_State *L, int idx);
+NICY_EXTERN_C void *      NICY_CAPI nicy_lua_tobuffer(nicy_State *L, int idx, size_t *len);
 
 /* ================================================================
  * 6. Table and global access — get
@@ -283,6 +287,7 @@ NICY_EXTERN_C int  NICY_CAPI nicy_lua_setfenv(nicy_State *L, int idx);
 
 NICY_EXTERN_C const char *NICY_CAPI nicy_luaL_checkstring(nicy_State *L, int narg);
 NICY_EXTERN_C const char *NICY_CAPI nicy_luaL_checklstring(nicy_State *L, int narg, size_t *len);
+NICY_EXTERN_C void *       NICY_CAPI nicy_luaL_checkbuffer(nicy_State *L, int narg, size_t *len);
 NICY_EXTERN_C nicy_Number  NICY_CAPI nicy_luaL_checknumber(nicy_State *L, int narg);
 NICY_EXTERN_C int          NICY_CAPI nicy_luaL_checkboolean(nicy_State *L, int narg);
 NICY_EXTERN_C nicy_Integer NICY_CAPI nicy_luaL_checkinteger(nicy_State *L, int narg);
