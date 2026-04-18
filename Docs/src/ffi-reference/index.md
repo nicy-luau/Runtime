@@ -1,6 +1,6 @@
 # FFI C-ABI Reference
 
-NicyRuntime exports **89 functions** with a stable `extern "C-unwind"` ABI. This includes **87 Lua C API wrappers** for complete Luau state management and **2 error code utilities**.
+NicyRuntime exports **92 functions** with a stable `extern "C-unwind"` ABI. This includes **90 Lua C API wrappers** for complete Luau state management and **2 error code utilities**.
 
 ## Header File
 
@@ -42,6 +42,7 @@ All functions use `extern "C-unwind"`, allowing exceptions to propagate across F
 | `nicy_lua_pushcfunction` | `void nicy_lua_pushcfunction(nicy_State *L, nicy_CFunction f);` |
 | `nicy_lua_pushcclosure` | `void nicy_lua_pushcclosure(nicy_State *L, nicy_CFunction f, int n);` |
 | `nicy_lua_pushlightuserdata` | `void nicy_lua_pushlightuserdata(nicy_State *L, void *p);` |
+| `nicy_lua_pushvector` | `void nicy_lua_pushvector(nicy_State *L, float x, float y, float z, float w);` |
 | `nicy_lua_newuserdata` | `void *nicy_lua_newuserdata(nicy_State *L, size_t sz);` |
 | `nicy_lua_newbuffer` | `void *nicy_lua_newbuffer(nicy_State *L, size_t sz);` |
 | `nicy_lua_newthread` | `nicy_State *nicy_lua_newthread(nicy_State *L);` |
@@ -63,6 +64,7 @@ All functions use `extern "C-unwind"`, allowing exceptions to propagate across F
 | `nicy_lua_iscfunction` | `int nicy_lua_iscfunction(nicy_State *L, int idx);` |
 | `nicy_lua_isinteger` | `int nicy_lua_isinteger(nicy_State *L, int idx);` |
 | `nicy_lua_isbuffer` | `int nicy_lua_isbuffer(nicy_State *L, int idx);` |
+| `nicy_lua_isvector` | `int nicy_lua_isvector(nicy_State *L, int idx);` |
 
 ## Get & Conversion
 
@@ -75,6 +77,7 @@ All functions use `extern "C-unwind"`, allowing exceptions to propagate across F
 | `nicy_lua_tointeger` | `nicy_Integer nicy_lua_tointeger(nicy_State *L, int idx);` |
 | `nicy_lua_touserdata` | `void *nicy_lua_touserdata(nicy_State *L, int idx);` |
 | `nicy_lua_tobuffer` | `void *nicy_lua_tobuffer(nicy_State *L, int idx, size_t *len);` |
+| `nicy_lua_tovector` | `const float *nicy_lua_tovector(nicy_State *L, int idx);` |
 
 ## Table Access
 
