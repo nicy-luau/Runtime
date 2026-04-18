@@ -11,7 +11,7 @@ use crate::error::error_codes;
 use mlua_sys::luau::compat;
 use mlua_sys::luau::lauxlib;
 use mlua_sys::luau::lua;
-use std::os::raw::{c_char, c_int, c_void};
+use std::os::raw::{c_char, c_float, c_int, c_void};
 
 /// Macro to add null pointer validation to FFI functions that take `*mut LuauState`.
 /// Returns the specified default value if `l` is null, preventing undefined behavior
@@ -178,8 +178,20 @@ pub unsafe extern "C-unwind" fn nicy_lua_pushnil(l: *mut LuauState) {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C-unwind" fn nicy_lua_pushlightuserdata(l: *mut LuauState, p: *mut c_void) {
-    null_guard!(l);
-    unsafe { lua::lua_pushlightuserdata(l, p) };
+    null_guard!(l, ());
+    unsafe { lua::lua_pushlightuserdata(l, p) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C-unwind" fn nicy_lua_pushvector(
+    l: *mut LuauState,
+    x: c_float,
+    y: c_float,
+    z: c_float,
+    w: c_float,
+) {
+    null_guard!(l, ());
+    unsafe { lua::lua_pushvector(l, x, y, z, w) }
 }
 
 #[unsafe(no_mangle)]
@@ -246,6 +258,12 @@ pub unsafe extern "C-unwind" fn nicy_lua_tobuffer(
 ) -> *mut c_void {
     null_guard!(l, std::ptr::null_mut());
     unsafe { lua::lua_tobuffer(l, idx, len) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C-unwind" fn nicy_lua_tovector(l: *mut LuauState, idx: c_int) -> *const c_float {
+    null_guard!(l, std::ptr::null());
+    unsafe { lua::lua_tovector(l, idx) }
 }
 
 #[unsafe(no_mangle)]
@@ -381,7 +399,13 @@ pub unsafe extern "C-unwind" fn nicy_lua_isthread(l: *mut LuauState, idx: c_int)
 pub unsafe extern "C-unwind" fn nicy_lua_isbuffer(l: *mut LuauState, idx: c_int) -> c_int {
     null_guard!(l, 0);
     // lua_isbuffer is typically an inline macro checking lua_type == LUA_TBUFFER
-    unsafe { if lua::lua_type(l, idx) == 11 { 1 } else { 0 } }
+    unsafe { if lua::lua_type(l, idx) == lua::LUA_TBUFFER { 1 } else { 0 } }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C-unwind" fn nicy_lua_isvector(l: *mut LuauState, idx: c_int) -> c_int {
+    null_guard!(l, 0);
+    unsafe { if lua::lua_type(l, idx) == lua::LUA_TVECTOR { 1 } else { 0 } }
 }
 
 #[unsafe(no_mangle)]
