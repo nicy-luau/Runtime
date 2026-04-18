@@ -260,8 +260,8 @@ unsafe fn get_or_create_extension_cache_table(l: *mut LuauState) {
             )
         };
     } else {
-        // Table already exists: remove from stack to balance
-        unsafe { lua::lua_pop(l, 1) };
+        // Table already exists and was already pushed by lua_getfield above.
+        // Do NOT pop it — the caller expects the cache table to be on top of the stack.
     }
 }
 
@@ -296,7 +296,10 @@ unsafe extern "C-unwind" fn nicy_runtime_loadlib(l: *mut LuauState) -> c_int {
             lua::lua_remove(l, cache_idx);
             return Ok(1);
         }
-        lua::lua_settop(l, -2);
+        // Pop both the nil result (from lua_gettable) AND the cache_table itself.
+        // lua_settop(l, -2) would only remove the nil, leaving cache_table on the stack
+        // and corrupting the base stack index seen by the native module's init function.
+        lua::lua_settop(l, -3);
 
         // FIX: Wrap Library::new in catch_unwind to prevent SEH crashes on Windows
         // Library::new can trigger Windows loader exceptions (STATUS_ENTRYPOINT_NOT_FOUND,
