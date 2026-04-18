@@ -60,11 +60,13 @@ typedef int (NICY_CAPI *nicy_CFunction)(nicy_State *L);
 #define NICY_LUA_TBOOLEAN      1
 #define NICY_LUA_TLIGHTUSERDATA 2
 #define NICY_LUA_TNUMBER       3
-#define NICY_LUA_TSTRING       4
-#define NICY_LUA_TTABLE        5
-#define NICY_LUA_TFUNCTION     6
-#define NICY_LUA_TUSERDATA     7
-#define NICY_LUA_TTHREAD       8
+#define NICY_LUA_TINTEGER      4
+#define NICY_LUA_TVECTOR       5
+#define NICY_LUA_TSTRING       6
+#define NICY_LUA_TTABLE        7
+#define NICY_LUA_TFUNCTION     8
+#define NICY_LUA_TUSERDATA     9
+#define NICY_LUA_TTHREAD       10
 #define NICY_LUA_TBUFFER       11
 
 /* ================================================================
@@ -183,6 +185,7 @@ NICY_EXTERN_C void NICY_CAPI nicy_lua_pushlstring(nicy_State *L, const char *s, 
 NICY_EXTERN_C void NICY_CAPI nicy_lua_pushcfunction(nicy_State *L, nicy_CFunction f);
 NICY_EXTERN_C void NICY_CAPI nicy_lua_pushcclosure(nicy_State *L, nicy_CFunction f, int n);
 NICY_EXTERN_C void NICY_CAPI nicy_lua_pushlightuserdata(nicy_State *L, void *p);
+NICY_EXTERN_C void NICY_CAPI nicy_lua_pushvector(nicy_State *L, float x, float y, float z, float w);
 NICY_EXTERN_C void *NICY_CAPI nicy_lua_newuserdata(nicy_State *L, size_t sz);
 NICY_EXTERN_C void *NICY_CAPI nicy_lua_newbuffer(nicy_State *L, size_t sz);
 NICY_EXTERN_C nicy_State *NICY_CAPI nicy_lua_newthread(nicy_State *L);
@@ -205,6 +208,7 @@ NICY_EXTERN_C int  NICY_CAPI nicy_lua_isthread(nicy_State *L, int idx);
 NICY_EXTERN_C int  NICY_CAPI nicy_lua_iscfunction(nicy_State *L, int idx);
 NICY_EXTERN_C int  NICY_CAPI nicy_lua_isinteger(nicy_State *L, int idx);
 NICY_EXTERN_C int  NICY_CAPI nicy_lua_isbuffer(nicy_State *L, int idx);
+NICY_EXTERN_C int  NICY_CAPI nicy_lua_isvector(nicy_State *L, int idx);
 
 /* ================================================================
  * 5. Get / conversion operations
@@ -217,6 +221,7 @@ NICY_EXTERN_C nicy_Number NICY_CAPI nicy_lua_tonumber(nicy_State *L, int idx);
 NICY_EXTERN_C nicy_Integer NICY_CAPI nicy_lua_tointeger(nicy_State *L, int idx);
 NICY_EXTERN_C void *      NICY_CAPI nicy_lua_touserdata(nicy_State *L, int idx);
 NICY_EXTERN_C void *      NICY_CAPI nicy_lua_tobuffer(nicy_State *L, int idx, size_t *len);
+NICY_EXTERN_C const float *NICY_CAPI nicy_lua_tovector(nicy_State *L, int idx);
 
 /* ================================================================
  * 6. Table and global access — get
