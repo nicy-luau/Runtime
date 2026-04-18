@@ -227,9 +227,25 @@ pub unsafe extern "C-unwind" fn nicy_lua_newuserdata(l: *mut LuauState, sz: usiz
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C-unwind" fn nicy_lua_newbuffer(l: *mut LuauState, sz: usize) -> *mut c_void {
+    null_guard!(l, std::ptr::null_mut());
+    unsafe { lua::lua_newbuffer(l, sz) }
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C-unwind" fn nicy_lua_touserdata(l: *mut LuauState, idx: c_int) -> *mut c_void {
     null_guard!(l, std::ptr::null_mut());
     unsafe { lua::lua_touserdata(l, idx) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C-unwind" fn nicy_lua_tobuffer(
+    l: *mut LuauState,
+    idx: c_int,
+    len: *mut usize,
+) -> *mut c_void {
+    null_guard!(l, std::ptr::null_mut());
+    unsafe { lua::lua_tobuffer(l, idx, len) }
 }
 
 #[unsafe(no_mangle)]
@@ -362,6 +378,13 @@ pub unsafe extern "C-unwind" fn nicy_lua_isthread(l: *mut LuauState, idx: c_int)
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C-unwind" fn nicy_lua_isbuffer(l: *mut LuauState, idx: c_int) -> c_int {
+    null_guard!(l, 0);
+    // lua_isbuffer is typically an inline macro checking lua_type == LUA_TBUFFER
+    unsafe { if lua::lua_type(l, idx) == 11 { 1 } else { 0 } }
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C-unwind" fn nicy_lua_isboolean(l: *mut LuauState, idx: c_int) -> c_int {
     null_guard!(l, 0);
     unsafe { lua::lua_isboolean(l, idx) }
@@ -469,6 +492,16 @@ pub unsafe extern "C-unwind" fn nicy_luaL_checknumber(
 ) -> lua::lua_Number {
     null_guard!(l, 0.0);
     unsafe { lauxlib::luaL_checknumber(l, narg) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C-unwind" fn nicy_luaL_checkbuffer(
+    l: *mut LuauState,
+    narg: c_int,
+    len: *mut usize,
+) -> *mut c_void {
+    null_guard!(l, std::ptr::null_mut());
+    unsafe { lauxlib::luaL_checkbuffer(l, narg, len) }
 }
 
 #[unsafe(no_mangle)]
